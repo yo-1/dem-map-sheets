@@ -1,0 +1,34 @@
+name: Synthetic DEM validation
+on:
+  pull_request:
+  push:
+    branches: ['codex/**']
+  workflow_dispatch:
+permissions:
+  contents: read
+jobs:
+  synthetic:
+    runs-on: ubuntu-24.04
+    steps:
+      - uses: actions/checkout@v7
+        with:
+          persist-credentials: false
+      - name: Install GDAL test dependencies
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y python3-gdal python3-numpy python3-pil
+      - name: Unit tests
+        run: PYTHONPATH=. /usr/bin/python3 -m unittest discover -s dem_map_sheets/tests -v
+      - name: DEM selection and NoData fallback
+        run: /usr/bin/python3 validation/validate_dem.py
+      - name: Independent TerrainRGB PNG roundtrip
+        run: /usr/bin/python3 validation/verify_terrainrgb.py "$PWD" "$PWD/validation/terrainrgb_results"
+      - name: Preserve results
+        if: always()
+        uses: actions/upload-artifact@v7
+        with:
+          name: synthetic-validation
+          path: |
+            validation/results/**/validation_results.json
+            validation/terrainrgb_results/terrainrgb_results.json
+          if-no-files-found: warn

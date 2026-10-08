@@ -1,0 +1,5 @@
+__pycache__/
+*.pyc
+validation/results/
+validation/qgis_results/
+validation/terrainrgb_results/
