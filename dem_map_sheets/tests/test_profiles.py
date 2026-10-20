@@ -14,6 +14,14 @@ class ProfileTests(unittest.TestCase):
             self.assertEqual(load_profile(p, values), values)
             self.assertEqual(missing_inputs(values), values['FILES'])
 
+    def test_invalid_payload_preserves_existing_profile(self):
+        with tempfile.TemporaryDirectory() as d:
+            p = Path(d) / "settings.json"
+            p.write_text("original", encoding="utf-8")
+            with self.assertRaises(ValueError):
+                save_profile(p, {"CELL": float("nan")})
+            self.assertEqual(p.read_text(encoding="utf-8"), "original")
+
     def test_reject_foreign_future_and_unknown_parameters(self):
         with tempfile.TemporaryDirectory() as d:
             p = Path(d)/'settings.json'
