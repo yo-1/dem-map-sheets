@@ -115,8 +115,11 @@ def _zone_from_dataset(path,gdal,osr):
 
 def _bounds(path,gdal):
     ds=gdal.Open(str(path));gt=ds.GetGeoTransform()
-    b=(gt[0],gt[3]+gt[5]*ds.RasterYSize,gt[0]+gt[1]*ds.RasterXSize,gt[3]);ds=None
-    return b
+    corners=[(gt[0]+gt[1]*x+gt[2]*y, gt[3]+gt[4]*x+gt[5]*y)
+             for x in (0,ds.RasterXSize) for y in (0,ds.RasterYSize)]
+    ds=None
+    return (min(x for x,y in corners), min(y for x,y in corners),
+            max(x for x,y in corners), max(y for x,y in corners))
 
 
 def _union_bounds(paths,gdal):
