@@ -25,22 +25,24 @@ def materialize_geotiff(source,dest,gdal):
 def merge_geotiffs(inputs,dest,gdal,first_wins=False,output_bounds=None,width=None,height=None):
     ordered=list(reversed(inputs)) if first_wins else list(inputs)
     vrt_path=Path(dest).with_suffix('.vrt')
-    vrt=gdal.BuildVRT(str(vrt_path),ordered,srcNodata=NODATA,VRTNodata=NODATA,
-                      resolution='highest',strict=True)
-    if vrt is None: raise RuntimeError('DEM mosaic VRT creation failed')
-    vrt.FlushCache();vrt=None
-    if output_bounds is not None:
-        # Translate outputBounds assigns georeferencing; Warp actually clips.
-        ds=gdal.Warp(str(dest),str(vrt_path),format='GTiff',outputType=gdal.GDT_Float32,
-            dstNodata=NODATA,creationOptions=gtiff_options(),outputBounds=output_bounds,
-            width=width,height=height,resampleAlg='near',errorThreshold=0)
-    else:
-        ds=gdal.Translate(str(dest),str(vrt_path),format='GTiff',outputType=gdal.GDT_Float32,
-            noData=NODATA,creationOptions=gtiff_options())
-    if ds is None: raise RuntimeError('GeoTIFF creation failed: '+str(dest))
-    ds.FlushCache();ds=None;vrt_path.unlink(missing_ok=True)
-    return str(dest)
-
+    try:
+        vrt=gdal.BuildVRT(str(vrt_path),ordered,srcNodata=NODATA,VRTNodata=NODATA,
+                          resolution='highest',strict=True)
+        if vrt is None: raise RuntimeError('DEM mosaic VRT creation failed')
+        vrt.FlushCache();vrt=None
+        if output_bounds is not None:
+            # Translate outputBounds assigns georeferencing; Warp actually clips.
+            ds=gdal.Warp(str(dest),str(vrt_path),format='GTiff',outputType=gdal.GDT_Float32,
+                dstNodata=NODATA,creationOptions=gtiff_options(),outputBounds=output_bounds,
+                width=width,height=height,resampleAlg='near',errorThreshold=0)
+        else:
+            ds=gdal.Translate(str(dest),str(vrt_path),format='GTiff',outputType=gdal.GDT_Float32,
+                noData=NODATA,creationOptions=gtiff_options())
+        if ds is None: raise RuntimeError('GeoTIFF creation failed: '+str(dest))
+        ds.FlushCache();ds=None
+        return str(dest)
+    finally:
+        vrt_path.unlink(missing_ok=True)
 
 def _finite_number(value,name,positive=False,integer=False):
     if value in (None,''): return None
