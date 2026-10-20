@@ -24,6 +24,19 @@ class Regressions(unittest.TestCase):
             merge_geotiffs(['a.tif','b.tif'],Path(d)/'out.tif',gdal,output_bounds=(0,-1500,2000,0),width=20,height=15)
         gdal.Warp.assert_called_once();gdal.Translate.assert_not_called()
         self.assertEqual(gdal.Warp.call_args.kwargs['outputBounds'],(0,-1500,2000,0))
+    def test_merge_failure_removes_temporary_vrt(self):
+        gdal=Mock();gdal.GDT_Float32=6
+        with tempfile.TemporaryDirectory() as d:
+            target=Path(d)/'out.tif'
+            vrt=target.with_suffix('.vrt')
+            def build_vrt(path, *args, **kwargs):
+                Path(path).write_text('temporary')
+                return Mock()
+            gdal.BuildVRT.side_effect=build_vrt
+            gdal.Translate.side_effect=RuntimeError('translation failed')
+            with self.assertRaisesRegex(RuntimeError,'translation failed'):
+                merge_geotiffs(['a.tif'],target,gdal)
+            self.assertFalse(vrt.exists())
     def test_auto_crs_call_supplies_osr(self):
         from unittest.mock import patch
         from dem_map_sheets.engine import dem_pipeline as p
