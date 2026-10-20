@@ -16,6 +16,8 @@ def encode_elevation(values, valid=None):
     arr = np.asarray(values, dtype='float64')
     if valid is None:
         valid = np.isfinite(arr) & (arr != NODATA)
+    if np.any(valid & (~np.isfinite(arr) | (arr < -10000.0) | (arr > 1667721.5))):
+        raise ValueError("TerrainRGB valid elevation outside encodable range [-10000, 1667721.5] m")
     # Standard tile NoData decodes to -9999 m; keep alpha transparent as well.
     code = np.rint((np.where(valid,arr,-9999.0) + 10000.0) * 10.0)
     code = np.clip(code, 0, 256**3 - 1).astype('uint32')
