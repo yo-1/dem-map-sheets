@@ -24,6 +24,13 @@ class Regressions(unittest.TestCase):
             merge_geotiffs(['a.tif','b.tif'],Path(d)/'out.tif',gdal,output_bounds=(0,-1500,2000,0),width=20,height=15)
         gdal.Warp.assert_called_once();gdal.Translate.assert_not_called()
         self.assertEqual(gdal.Warp.call_args.kwargs['outputBounds'],(0,-1500,2000,0))
+    def test_rotated_dem_bounds_enclose_all_corners(self):
+        from dem_map_sheets.engine.dem_pipeline import _bounds
+        gdal=Mock()
+        ds=gdal.Open.return_value
+        ds.GetGeoTransform.return_value=(10,2,1,20,1,-3)
+        ds.RasterXSize=4; ds.RasterYSize=2
+        self.assertEqual(_bounds('rotated.tif',gdal),(10,14,20,24))
     def test_merge_failure_removes_temporary_vrt(self):
         gdal=Mock();gdal.GDT_Float32=6
         with tempfile.TemporaryDirectory() as d:
