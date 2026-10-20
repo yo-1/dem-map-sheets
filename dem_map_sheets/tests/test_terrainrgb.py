@@ -16,6 +16,21 @@ class TerrainRGBTests(unittest.TestCase):
         self.assertEqual(int(rgba[3,0,0]),255)
         self.assertEqual(int(rgba[3,0,1]),0)
 
+    def test_out_of_range_elevation_is_rejected(self):
+        for value in (-10000.1, 1667721.6):
+            with self.subTest(value=value), self.assertRaises(ValueError):
+                encode_elevation(np.array([[value]], dtype="float64"))
+
+    def test_nonfinite_default_is_transparent(self):
+        rgba = encode_elevation(np.array([[float("nan"), float("inf")]]))
+        self.assertTrue((rgba[3] == 0).all())
+
+    def test_invalid_masked_elevation_is_transparent(self):
+        rgba = encode_elevation(np.array([[float("nan"), 42.0]]),
+                                np.array([[False, True]]))
+        self.assertEqual(int(rgba[3, 0, 0]), 0)
+        self.assertEqual(int(rgba[3, 0, 1]), 255)
+
     def test_tile_range(self):
         self.assertEqual(tile_range((-1,-1,1,1),0),(0,0,0,0))
 
