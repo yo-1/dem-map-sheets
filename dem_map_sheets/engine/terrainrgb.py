@@ -57,9 +57,11 @@ def _bounds_3857(src, osr):
     merc = osr.SpatialReference(); merc.ImportFromEPSG(3857)
     for crs in (srs, merc): crs.SetAxisMappingStrategy(osr.OAMS_TRADITIONAL_GIS_ORDER)
     gt = src.GetGeoTransform()
+    corners = [(gt[0] + gt[1]*x + gt[2]*y, gt[3] + gt[4]*x + gt[5]*y)
+               for x in (0, src.RasterXSize) for y in (0, src.RasterYSize)]
     return osr.CoordinateTransformation(srs, merc).TransformBounds(
-        gt[0], gt[3] + gt[5] * src.RasterYSize,
-        gt[0] + gt[1] * src.RasterXSize, gt[3], 41)
+        min(x for x,y in corners), min(y for x,y in corners),
+        max(x for x,y in corners), max(y for x,y in corners), 41)
 
 
 def write_terrainrgb_xyz(source, destination, min_zoom, max_zoom, max_tiles, gdal, osr, feedback=None):
