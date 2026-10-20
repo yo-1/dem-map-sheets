@@ -1,5 +1,7 @@
 """Portable settings, independent of QGIS. GPL-3.0-only."""
 import json
+import os
+import tempfile
 from pathlib import Path
 from .version import VERSION
 
@@ -16,7 +18,18 @@ def save_profile(path, parameters):
     payload = {'format': 'dem-map-sheets-settings', 'schema_version': 1,
                'plugin_version': VERSION, 'parameters': parameters}
     text = json.dumps(payload, ensure_ascii=False, indent=2, allow_nan=False)
-    Path(path).write_text(text + '\n', encoding='utf-8')
+    target = Path(path)
+    temporary = None
+    try:
+        with tempfile.NamedTemporaryFile(mode='w', encoding='utf-8', newline='\n',
+                                         dir=target.parent, prefix='.' + target.name + '.',
+                                         suffix='.tmp', delete=False) as handle:
+            temporary = Path(handle.name)
+            handle.write(text + '\n')
+        os.replace(temporary, target)
+    finally:
+        if temporary is not None:
+            temporary.unlink(missing_ok=True)
 
 def load_profile(path, allowed):
     payload = json.loads(Path(path).read_text(encoding='utf-8-sig'))
