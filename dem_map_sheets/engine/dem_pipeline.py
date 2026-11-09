@@ -10,6 +10,27 @@ from .input_sources import DEFAULTS as INPUT_DEFAULTS, crs_of, discover, prepare
 from .map_sheets import intersecting_sheets, dimensions
 
 
+def _has_valid_cells(path,gdal):
+    """True when the raster holds at least one finite, non-NoData cell.
+
+    Scans in row blocks and stops at the first valid cell, so the
+    common case costs one block read; only a genuinely empty output
+    is read in full.
+    """
+    ds=gdal.Open(str(path))
+    if ds is None:return False
+    band=ds.GetRasterBand(1);nodata=band.GetNoDataValue()
+    try:
+        for y in range(0,band.YSize,512):
+            block=band.ReadAsArray(0,y,band.XSize,min(512,band.YSize-y))
+            valid=np.isfinite(block)
+            if nodata is not None:valid&=block!=nodata
+            if valid.any():return True
+        return False
+    finally:
+        ds=None
+
+
 def gtiff_options():
     return ['TILED=YES','COMPRESS=DEFLATE','PREDICTOR=3','BIGTIFF=IF_SAFER']
 
@@ -337,7 +358,9 @@ def run(config,output_dir,gdal,osr,feedback=None):
     # inconsistencies now fail here with a clear error, before any
     # directory is created or GDAL is invoked (also covers KD-1).
     for key in ('cell_size','target_crs'):
-        if key not in c: raise ValueError(key+' is required')
+        if key not in c:
+            ja={'cell_size':'セルサイズ','target_crs':'対象CRS'}[key]
+            raise ValueError(f'{key} is required（{ja}を指定してください）')
     c.setdefault('max_pixels',25000000)
     validate_input(c)
     # CRS validation depth (r5): reject an unparseable, compound or
@@ -346,7 +369,8 @@ def run(config,output_dir,gdal,osr,feedback=None):
     try:
         crs_of(c['target_crs'],osr)
     except ValueError as exc:
-        raise ValueError('Invalid target_crs: '+str(c['target_crs'])) from exc
+        raise ValueError('Invalid target_crs: '+str(c['target_crs'])
+            +'（対象CRSが解釈できません。有効なCRS（例：EPSG:6677）を指定してください）') from exc
     out=Path(output_dir);out.mkdir(parents=True,exist_ok=False)
     work=out/'work';source_dir=out/'01_source_dem';source_dir.mkdir()
     c['inputs']=discover(c['inputs'],'',c,feedback)
@@ -367,7 +391,23 @@ def run(config,output_dir,gdal,osr,feedback=None):
                 if feedback is not None:feedback.setProgress(min(55,5+50*i/max(1,len(prepared['inputs']))))
             merged=merge_geotiffs(materialized,out/'02_merged_dem.tif',gdal,first_wins=(mode=='first'))
             priority_report={'mode':mode}
+        # An output with no valid cells at all (e.g. a 5x5 m input
+        # rendered at a 10 m cell, whose single output pixel centre
+        # falls outside the input) must not look like a successful
+        # DEM: warn loudly, but do not fail the run - the cause may
+        # be a legitimate (if useless) parameter combination.
+        output_warnings=[]
+        if not _has_valid_cells(merged,gdal):
+            message=('出力DEMの全セルがNoDataです。入力の標高値が1つも反映されていません。'
+                'セルサイズが入力範囲に対して大きすぎる、入力と出力の座標系・範囲のずれ、'
+                'source_nodata（元データの無効値）の設定が実データと合っていない、'
+                'などの可能性があります。入力範囲とセルサイズ、座標系、NoData設定を確認してください。'
+                ' (The merged DEM contains no valid elevation cells.)')
+            output_warnings.append('all_nodata_output')
+            if feedback is not None and hasattr(feedback,'pushWarning'):
+                feedback.pushWarning(message)
         manifest={'status':'completed','input_type':c['input_type'],'source_count':len(materialized),
+            'warnings':output_warnings,
             'source_dems':materialized,'merged_dem':merged,'target_crs':c['target_crs'],'cell_size':c['cell_size'],
             'vertical_reference':c['vertical_reference'],'vertical_conversion':False,'merge_priority':mode,
             'priority_selection':priority_report,'input_report':report}
