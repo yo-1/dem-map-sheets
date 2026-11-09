@@ -6,7 +6,7 @@ import math
 import os
 import shutil
 import numpy as np
-from .input_sources import DEFAULTS as INPUT_DEFAULTS, discover, prepare_inputs, NODATA
+from .input_sources import DEFAULTS as INPUT_DEFAULTS, discover, prepare_inputs, validate_input, NODATA
 from .map_sheets import intersecting_sheets, dimensions
 
 
@@ -304,9 +304,13 @@ def _merge_auto(c,groups,out,gdal,osr,feedback=None):
 
 
 def run(config,output_dir,gdal,osr,feedback=None):
+    c={**INPUT_DEFAULTS,**config}
+    # KD-2: validate_input existed but was never called; configuration
+    # inconsistencies now fail here with a clear error, before any
+    # directory is created or GDAL is invoked (also covers KD-1).
+    validate_input(c)
     out=Path(output_dir);out.mkdir(parents=True,exist_ok=False)
     work=out/'work';source_dir=out/'01_source_dem';source_dir.mkdir()
-    c={**INPUT_DEFAULTS,**config}
     c['inputs']=discover(c['inputs'],'',c,feedback)
     try:
         mode=config.get('merge_priority','last')

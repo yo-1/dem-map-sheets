@@ -103,7 +103,7 @@ class RunFailureTests(unittest.TestCase):
     def _cfg(self, **kw):
         c = dict(input_type='text', text_mode='points', inputs=[str(self.csv)],
                  input_crs='EPSG:6677', target_crs='EPSG:6677', cell_size=10.0,
-                 point_tile_size=4, max_pixels=10 ** 9, source_nodata=None,
+                 point_tile_size=64, max_pixels=10 ** 9, source_nodata=None,
                  pdal_path=self.fake, merge_priority='last')
         c.update(kw)
         return c
@@ -186,7 +186,7 @@ class PruneRobustnessTests(unittest.TestCase):
             csv.write_text('X,Y,Z\n0,0,100\n', encoding='utf-8')
             cfg = dict(input_type='text', text_mode='points', inputs=[str(csv)],
                        input_crs='EPSG:6677', target_crs='EPSG:6677',
-                       cell_size=10.0, point_tile_size=4, max_pixels=10 ** 9,
+                       cell_size=10.0, point_tile_size=64, max_pixels=10 ** 9,
                        source_nodata=None, pdal_path='/nonexistent/pdal',
                        merge_priority='last')
             with mock.patch.object(pipeline_module, 'prune_work_after_failure',
@@ -209,7 +209,7 @@ class RunFailureDiagnosticsTests(unittest.TestCase):
             fake.chmod(fake.stat().st_mode | stat.S_IEXEC)
             cfg = dict(input_type='text', text_mode='points', inputs=[str(csv)],
                        input_crs='EPSG:6677', target_crs='EPSG:6677',
-                       cell_size=10.0, point_tile_size=4, max_pixels=10 ** 9,
+                       cell_size=10.0, point_tile_size=64, max_pixels=10 ** 9,
                        source_nodata=None, pdal_path=str(fake),
                        merge_priority='last')
             out = root / 'out'
