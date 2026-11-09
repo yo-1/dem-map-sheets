@@ -91,6 +91,19 @@ class ForestIgnoredWarningTests(unittest.TestCase):
         self.assertEqual(len(feedback.warnings), 21)
         self.assertIn('ほか 5 件', feedback.warnings[-1])
 
+    def test_all_invalid_error_names_count_and_reasons(self):
+        # M-3 follow-up: the final error must show WHY inputs were
+        # ignored, not just that none were usable (full detail stays
+        # in input_report.json).
+        feedback = _Feedback()
+        with self.assertRaises(ValueError) as ctx:
+            prepare_inputs(self._cfg([self.bad, self.offgrid]),
+                           self.dir / 'work_all', gdal, osr, feedback)
+        message = str(ctx.exception)
+        self.assertIn('No usable DEMs found', message)
+        self.assertIn('2 input(s) ignored', message)
+        self.assertIn(self.bad, message)
+
     def test_all_inputs_invalid_stops_with_error(self):
         feedback = _Feedback()
         with self.assertRaises(ValueError):

@@ -530,7 +530,13 @@ def prepare_inputs(c,work,gdal,osr,feedback=None):
                 raise ValueError('GSI old/new datum labels are mixed. Unify elevation realizations before merging.')
             if c['input_type']=='gsi' and outputs:
                 outputs=normalize_gsi_groups(outputs,work,c,gdal,osr,feedback)
-        if not outputs:raise ValueError('No usable DEMs found (XML may contain metadata only)')
+        if not outputs:
+            ignored=report.get('ignored') or []
+            if ignored:
+                first='; '.join(f"{i['path']}: {i['reason']}" for i in ignored[:3])
+                raise ValueError(f'No usable DEMs found: {len(ignored)} input(s) ignored; '
+                                 f'first reasons: {first}')
+            raise ValueError('No usable DEMs found (XML may contain metadata only)')
         report.update(status='completed',prepared_rasters=outputs);save()
         return {**c,'inputs':outputs,'source_nodata':None},report
     except BaseException as exc:
