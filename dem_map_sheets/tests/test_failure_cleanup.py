@@ -15,7 +15,7 @@ from pathlib import Path
 from osgeo import gdal, osr
 
 from dem_map_sheets.engine.dem_pipeline import (
-    merge_geotiffs, prune_work_after_failure, run)
+    materialize_geotiff, merge_geotiffs, prune_work_after_failure, run)
 
 FAKE_PDAL = r'''
 import json, sys
@@ -60,6 +60,20 @@ class _Feedback:
 
     def setProgress(self, value):
         pass
+
+
+class MaterializeAtomicityTests(unittest.TestCase):
+    def test_failed_materialize_leaves_no_partial_file(self):
+        from unittest import mock
+        with tempfile.TemporaryDirectory() as td:
+            dest = Path(td) / 'dem_00001.tif'
+            fake_gdal = mock.Mock()
+            fake_gdal.Translate.side_effect = RuntimeError('simulated write failure')
+            fake_gdal.GDT_Float32 = gdal.GDT_Float32
+            with self.assertRaises(RuntimeError):
+                materialize_geotiff('src.tif', dest, fake_gdal)
+            self.assertFalse(dest.exists())
+            self.assertFalse(Path(str(dest) + '.part').exists())
 
 
 class PruneTests(unittest.TestCase):
