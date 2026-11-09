@@ -99,7 +99,7 @@ class ForestIgnoredWarningTests(unittest.TestCase):
         self.assertEqual(len(feedback.warnings), 1)
 
 
-class ConfigVersusInputTests(PrepareBase):
+class ConfigVersusInputTests(ForestIgnoredWarningTests):
     """M-3 follow-up: configuration errors must not look like bad inputs."""
 
     def test_bad_forest_grid_cell_raises_not_ignored(self):
