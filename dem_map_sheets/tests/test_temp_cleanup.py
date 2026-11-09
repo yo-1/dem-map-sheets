@@ -160,6 +160,26 @@ class TempCleanupTests(unittest.TestCase):
                               self.work, gdal, osr, None)
         self.assertEqual(self._buffer_leftovers(), [])
 
+    def test_cleanup_permission_error_does_not_mask_failure(self):
+        # F-2: on Windows a just-released PDAL handle can make unlink
+        # raise PermissionError; cleanup in the finally blocks must
+        # never replace the original exception.
+        from unittest import mock
+        os.environ['FAKE_PDAL_FAIL_INFO_ON'] = '2'
+        real_unlink = Path.unlink
+
+        def locked(self, missing_ok=False):
+            if self.suffix == '.las':
+                raise PermissionError('simulated locked staged file')
+            return real_unlink(self, missing_ok=missing_ok)
+
+        with mock.patch.object(Path, 'unlink', locked):
+            with self.assertRaises(RuntimeError) as ctx:
+                points_to_rasters(self._cfg(input_type='lidar',
+                                            inputs=[self.las_unicode, self.las_second]),
+                                  self.work, gdal, osr, None)
+        self.assertIn('PDAL failed', str(ctx.exception))
+
     def test_logs_and_json_survive_failure(self):
         os.environ['FAKE_PDAL_FAIL'] = '1'
         with self.assertRaises(RuntimeError):

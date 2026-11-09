@@ -266,7 +266,7 @@ def _points_to_rasters(c,work,gdal,osr,feedback,exe,staged):
     finally:
         for path in staged:
             try:path.unlink()
-            except FileNotFoundError:pass
+            except OSError:pass
         stage_dir=work/'pdal_ascii_inputs'
         if stage_dir.is_dir():
             try:stage_dir.rmdir()
@@ -292,7 +292,7 @@ def points_to_rasters(c,work,gdal,osr,feedback=None):
     finally:
         for path in staged:
             try:path.unlink()
-            except FileNotFoundError:pass
+            except OSError:pass
         stage_dir=Path(work)/'pdal_ascii_inputs'
         if stage_dir.is_dir():
             try:stage_dir.rmdir()
