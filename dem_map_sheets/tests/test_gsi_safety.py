@@ -113,7 +113,7 @@ class GsiEncodingGuardTests(unittest.TestCase):
 
     def test_no_declaration_defaults_to_utf8(self):
         body = XML.format(enc='UTF-8').split('?>', 1)[1]
-        results = list(parse_dem(body.encode('utf-8')))
+        results = list(parse_dem(body.replace('{enc}', 'UTF-8').encode('utf-8')))
         self.assertEqual(len(results), 1)
 
     def test_utf8_bom_with_and_without_declaration(self):
@@ -160,6 +160,24 @@ class GsiEncodingGuardTests(unittest.TestCase):
 
 if __name__ == '__main__':
     unittest.main()
+
+
+class TupleErrorDetailTests(unittest.TestCase):
+    """KD-6: a bad elevation value names its tuple position."""
+
+    def test_invalid_elevation_names_tuple_and_value(self):
+        body = XML.split('<tupleList>')[0] + \
+            '<tupleList>a,1 a,xyz a,1 a,1</tupleList>' + \
+            XML.split('</tupleList>')[1]
+        with self.assertRaises(ValueError) as ctx:
+            list(parse_dem(body.replace('{enc}', 'UTF-8').encode('utf-8')))
+        self.assertIn('tuple #1', str(ctx.exception))
+        self.assertIn('xyz', str(ctx.exception))
+
+    def test_malformed_xml_is_value_error_with_position(self):
+        with self.assertRaises(ValueError) as ctx:
+            list(parse_dem(b'<Dataset><DEM></Dataset>'))
+        self.assertIn('line', str(ctx.exception))
 
 
 class EncodingAliasTests(unittest.TestCase):

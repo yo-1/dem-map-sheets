@@ -89,7 +89,10 @@ def parse_dem(data, max_pixels=25000000, source_override='', feedback=None):
     if '<!DOCTYPE' in text or '<!ENTITY' in text:
         raise ValueError('GSI XML too large or contains a DTD/entity declaration')
     text = re.sub(r'encoding=[\"\x27][^\"\x27]+[\"\x27]', 'encoding="UTF-8"', text, count=1, flags=re.I)
-    root = ET.fromstring(text)
+    try:
+        root = ET.fromstring(text)
+    except ET.ParseError as exc:
+        raise ValueError('GSI XML parse error: ' + str(exc)) from exc
     dems = [e for e in root.iter() if local(e.tag) == 'DEM']
     for dem in dems:
         env=child(dem,'Envelope'); lower=list(map(float,child(env,'lowerCorner').text.split())); upper=list(map(float,child(env,'upperCorner').text.split()))
@@ -119,7 +122,11 @@ def parse_dem(data, max_pixels=25000000, source_override='', feedback=None):
                 except StopIteration: raise ValueError('Too many GSI tuples for GridEnvelope/startPoint')
                 parts=item.split(',')
                 if len(parts)!=2: raise ValueError('Malformed GSI tuple: '+item[:80])
-                kind,value=parts; z=float(value)
+                kind,value=parts
+                try: z=float(value)
+                except ValueError as exc:
+                    raise ValueError(f'GSI DEM invalid elevation at tuple #{populated}: '
+                                     f'{value[:40]!r}') from exc
                 if np.isfinite(z) and z!=-9999 and kind not in ('データなし','海水面'):
                     arr[(gy-lo[1])*w+(gx-lo[0])]=z
                 populated+=1
