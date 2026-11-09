@@ -23,6 +23,8 @@ jobs:
         run: /usr/bin/python3 validation/validate_dem.py
       - name: Independent TerrainRGB PNG roundtrip
         run: /usr/bin/python3 validation/verify_terrainrgb.py "$PWD" "$PWD/validation/terrainrgb_results"
+      - name: GDAL edge regressions (rotated rasters)
+        run: PYTHONPATH=. /usr/bin/python3 -m unittest validation.test_gdal_edges -v
       - name: Preserve results
         if: always()
         uses: actions/upload-artifact@v7
