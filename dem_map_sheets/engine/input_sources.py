@@ -530,6 +530,12 @@ def prepare_inputs(c,work,gdal,osr,feedback=None):
                 raise ValueError('GSI old/new datum labels are mixed. Unify elevation realizations before merging.')
             if c['input_type']=='gsi' and outputs:
                 outputs=normalize_gsi_groups(outputs,work,c,gdal,osr,feedback)
+        if any(isinstance(s,dict) and s.get('jgd2024_horizontal_alias') for s in report['sources']):
+            # r5: the jgd2024 -> EPSG:6668 mapping is an approximation
+            # between datum realizations; say so in the report.
+            report['crs_alias_note']=('GSI files declaring fguuid:jgd2024.bl are treated as EPSG:6668. '
+                'JGD2024 and JGD2011 are different datum realizations, so positions may differ '
+                'at the centimetre level (approximation).')
         if not outputs:
             ignored=report.get('ignored') or []
             if ignored:

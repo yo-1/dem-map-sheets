@@ -73,3 +73,21 @@ class RunEntryValidationTests(unittest.TestCase):
 
 if __name__ == '__main__':
     unittest.main()
+
+
+class RunCrsValidationTests(unittest.TestCase):
+    def test_unparseable_target_crs_rejected_at_entry(self):
+        with tempfile.TemporaryDirectory() as td:
+            out = Path(td) / 'out'
+            cfg = _valid_config(target_crs='EPSG:99999', inputs=[])
+            with self.assertRaises(ValueError):
+                run(cfg, out, gdal, osr, None)
+            self.assertFalse(out.exists())
+
+    def test_3d_target_crs_rejected_at_entry(self):
+        with tempfile.TemporaryDirectory() as td:
+            out = Path(td) / 'out'
+            cfg = _valid_config(target_crs='EPSG:4979', inputs=[])
+            with self.assertRaises(ValueError):
+                run(cfg, out, gdal, osr, None)
+            self.assertFalse(out.exists())

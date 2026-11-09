@@ -6,7 +6,7 @@ import math
 import os
 import shutil
 import numpy as np
-from .input_sources import DEFAULTS as INPUT_DEFAULTS, discover, prepare_inputs, validate_input, NODATA
+from .input_sources import DEFAULTS as INPUT_DEFAULTS, crs_of, discover, prepare_inputs, validate_input, NODATA
 from .map_sheets import intersecting_sheets, dimensions
 
 
@@ -340,6 +340,13 @@ def run(config,output_dir,gdal,osr,feedback=None):
         if key not in c: raise ValueError(key+' is required')
     c.setdefault('max_pixels',25000000)
     validate_input(c)
+    # CRS validation depth (r5): reject an unparseable, compound or
+    # 3D target CRS here, before any directory or GDAL work, instead
+    # of failing midway through PDAL/GDAL processing.
+    try:
+        crs_of(c['target_crs'],osr)
+    except ValueError as exc:
+        raise ValueError('Invalid target_crs: '+str(c['target_crs'])) from exc
     out=Path(output_dir);out.mkdir(parents=True,exist_ok=False)
     work=out/'work';source_dir=out/'01_source_dem';source_dir.mkdir()
     c['inputs']=discover(c['inputs'],'',c,feedback)

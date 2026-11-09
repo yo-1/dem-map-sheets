@@ -82,14 +82,19 @@ class GdalCase(unittest.TestCase):
 
 class CrsRecognitionTests(GdalCase):
     def test_accepted_horizontal_crs(self):
-        for text, ident in [('EPSG:6677', 'JGD2011 / Japan Plane Rectangular CS IX'),
-                            ('EPSG:6668', 'JGD2011'), ('EPSG:4326', 'WGS 84'),
-                            ('EPSG:2451', None)]:
+        # Assert authority codes and structure, not display names:
+        # the EPSG database renames datums between versions (the
+        # JGD2011 -> JGD2024 label change on GDAL 3.13 broke exact
+        # name equality while the CRS codes stayed the same).
+        for text, code, projected in [('EPSG:6677', '6677', True),
+                                      ('EPSG:6668', '6668', False),
+                                      ('EPSG:4326', '4326', False),
+                                      ('EPSG:2451', '2451', True)]:
             with self.subTest(text):
                 crs = crs_of(text, osr)
                 self.assertEqual(crs.GetAxesCount(), 2)
-                if ident:
-                    self.assertEqual(crs.GetName(), ident)
+                self.assertEqual(crs.GetAuthorityCode(None), code)
+                self.assertEqual(bool(crs.IsProjected()), projected)
 
     def test_axis_mapping_is_x_east_y_north_even_for_authority_axis_order_crs(self):
         # EPSG:6677 and EPSG:4326 are northing/latitude-first in the registry.
