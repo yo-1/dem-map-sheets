@@ -200,3 +200,28 @@ class TempCleanupTests(unittest.TestCase):
 
 if __name__ == '__main__':
     unittest.main()
+
+
+class RunProcessEnvironmentTests(unittest.TestCase):
+    """W-1 residual: QGIS's PYTHONHOME/PYTHONPATH must not leak into
+    the PDAL child environment (PROJ_DATA/GDAL_DATA are already
+    repointed at the PDAL installation by run_process itself)."""
+
+    def test_python_env_vars_are_stripped_from_child(self):
+        import json
+        import sys
+        from unittest import mock
+        from dem_map_sheets.engine.point_inputs import run_process
+        with tempfile.TemporaryDirectory() as td:
+            dump = Path(td) / 'env.json'
+            log = Path(td) / 'child.log'
+            code = ('import os,json,sys;'
+                    'json.dump(dict(os.environ),open(sys.argv[1],"w"))')
+            with mock.patch.dict('os.environ',
+                                 {'PYTHONHOME': '/qgis-python',
+                                  'PYTHONPATH': '/qgis/plugins'}):
+                run_process(sys.executable, ['-c', code, str(dump)], log)
+            child_env = json.loads(dump.read_text(encoding='utf-8'))
+            self.assertNotIn('PYTHONHOME', child_env)
+            self.assertNotIn('PYTHONPATH', child_env)
+            self.assertIn('PATH', child_env)

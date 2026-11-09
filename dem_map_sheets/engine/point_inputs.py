@@ -35,6 +35,11 @@ def run_process(exe,args,log,feedback=None,json_output=False):
         if candidate:env[var]=str(candidate)
     if 'PROJ_DATA' in env:env['PROJ_LIB']=env['PROJ_DATA']
     env.pop('GDAL_DRIVER_PATH',None)
+    # W-1 residual: QGIS exports PYTHONHOME/PYTHONPATH for its own
+    # interpreter. They are meaningless to the native PDAL binary but
+    # can break interpreter-based helpers in a conda installation, so
+    # they must not leak into the child environment.
+    env.pop('PYTHONHOME',None);env.pop('PYTHONPATH',None)
     with open(log,'wb') as stdout,open(str(log)+'.stderr','wb') as stderr:
         process=subprocess.Popen([exe,*args],stdout=stdout,stderr=stderr,stdin=subprocess.DEVNULL,
             shell=False,env=env,creationflags=getattr(subprocess,'CREATE_NO_WINDOW',0))

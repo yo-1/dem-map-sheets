@@ -125,5 +125,58 @@ class RealPdalTests(unittest.TestCase):
         self.assertGreater((arr != -999999.0).sum(), 0)
 
 
+    def test_geographic_crs_input_axis_order(self):
+        # Task 4 probe: EPSG:4326 (lat/lon authority order) LAS input.
+        # If PDAL honoured the authority axis order instead of the
+        # GIS order the plugin assumes, the Tokyo points would land
+        # near (lat=139.7) - invalid or thousands of km away - and
+        # no valid block would appear near the GDAL-expected bounds.
+        from dem_map_sheets.engine.input_sources import crs_of
+        from dem_map_sheets.engine.point_inputs import transform_bounds
+        csv = self.root / 'tokyo.csv'
+        rows = ['X,Y,Z,Classification']
+        for j, lat in enumerate((35.60, 35.61, 35.62, 35.63)):
+            for i, lon in enumerate((139.70, 139.71, 139.72, 139.73)):
+                rows.append(f'{lon},{lat},{100 + i + j},2')
+        csv.write_text('\n'.join(rows) + '\n', encoding='utf-8')
+        las = self.root / 'tokyo.las'
+        pipeline = {'pipeline': [
+            {'type': 'readers.text', 'filename': str(csv)},
+            {'type': 'writers.las', 'filename': str(las), 'a_srs': 'EPSG:4326',
+             'scale_x': 0.0000001, 'scale_y': 0.0000001, 'scale_z': 0.001}]}
+        spec = self.root / 'tokyo.json'
+        spec.write_text(json.dumps(pipeline), encoding='utf-8')
+        result = subprocess.run([PDAL, 'pipeline', str(spec)],
+                                capture_output=True, text=True)
+        self.assertEqual(result.returncode, 0, result.stderr[:300])
+        work = self.root / 'work_geo'
+        work.mkdir()
+        cfg = self._cfg(input_type='lidar', inputs=[str(las)],
+                        input_crs='EPSG:4326', target_crs='EPSG:6677',
+                        cell_size=50.0, point_radius=200.0)
+        outputs, _meta = points_to_rasters(cfg, work, gdal, osr, None)
+        self.assertGreaterEqual(len(outputs), 1)
+        expected = transform_bounds((139.70, 35.60, 139.73, 35.63),
+                                    crs_of('EPSG:4326', osr),
+                                    crs_of('EPSG:6677', osr), osr)
+        total_valid = 0
+        centres_inside = False
+        for path in outputs:
+            ds = gdal.Open(path)
+            gt = ds.GetGeoTransform()
+            arr = ds.GetRasterBand(1).ReadAsArray()
+            ds = None
+            total_valid += int((arr != -999999.0).sum())
+            west, north = gt[0], gt[3]
+            east = west + gt[1] * arr.shape[1]
+            south = north + gt[5] * arr.shape[0]
+            cx = (expected[0] + expected[2]) / 2
+            cy = (expected[1] + expected[3]) / 2
+            if west - 1000 < cx < east + 1000 and south - 1000 < cy < north + 1000:
+                centres_inside = True
+        self.assertTrue(centres_inside, (expected, outputs))
+        self.assertGreater(total_valid, 0)
+
+
 if __name__ == '__main__':
     unittest.main()

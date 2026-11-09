@@ -543,7 +543,7 @@ def prepare_inputs(c,work,gdal,osr,feedback=None):
             # way and must not be treated as exact identity.
             report['crs_alias_note']=('GSI files declaring fguuid:jgd2011.bl or fguuid:jgd2024.bl are '
                 'treated as EPSG:6668. The EPSG dataset redefined code 6668 from JGD2011 to JGD2024, '
-                'so the realization it denotes depends on the GDAL/PROJ version; positions may differ '
+                'so the realization it denotes depends on the EPSG dataset version bundled with PROJ; positions may differ '
                 'at the centimetre level (approximation, not identity).')
         if not outputs:
             ignored=report.get('ignored') or []
