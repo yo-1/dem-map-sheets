@@ -49,7 +49,11 @@ def traversal_indices(lo, hi, start, order):
 # check are accepted. UTF-16/32 are rejected outright: their byte
 # patterns hide '<!DOCTYPE' from an ASCII search (review finding G-1).
 _GSI_ENCODINGS = {'utf-8', 'utf-8-sig', 'shift_jis', 'shift-jis',
-                  'euc-jp', 'iso-8859-1', 'ascii', 'us-ascii'}
+                  'euc-jp', 'iso-8859-1', 'ascii', 'us-ascii',
+                  'cp932', 'windows-31j'}
+# Files declaring Shift_JIS are decoded as cp932 (Windows-31J), a
+# superset: strict JIS X 0208 decoding rejects vendor-extension
+# characters that real-world files may contain (r4 compatibility).
 
 
 def parse_dem(data, max_pixels=25000000, source_override='', feedback=None):
@@ -59,8 +63,9 @@ def parse_dem(data, max_pixels=25000000, source_override='', feedback=None):
     encoding = declaration.group(1).decode('ascii') if declaration else 'utf-8-sig'
     if encoding.lower() not in _GSI_ENCODINGS:
         raise ValueError('Unsupported GSI XML encoding: ' + encoding)
+    codec = 'cp932' if encoding.lower() in ('shift_jis', 'shift-jis') else encoding
     try:
-        text = data.decode(encoding)
+        text = data.decode(codec)
     except (LookupError, UnicodeDecodeError) as exc:
         raise ValueError('GSI XML cannot be decoded as ' + encoding) from exc
     if '\x00' in text:

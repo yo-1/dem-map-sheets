@@ -75,6 +75,28 @@ class GsiEncodingGuardTests(unittest.TestCase):
         results = list(parse_dem(XML.format(enc='Shift_JIS').encode('shift_jis')))
         self.assertEqual(len(results), 1)
 
+    def test_no_declaration_defaults_to_utf8(self):
+        body = XML.format(enc='UTF-8').split('?>', 1)[1]
+        results = list(parse_dem(body.encode('utf-8')))
+        self.assertEqual(len(results), 1)
+
+    def test_utf8_bom_with_and_without_declaration(self):
+        with_decl = b'\xef\xbb\xbf' + XML.format(enc='UTF-8').encode('utf-8')
+        self.assertEqual(len(list(parse_dem(with_decl))), 1)
+        body = XML.format(enc='UTF-8').split('?>', 1)[1]
+        without_decl = b'\xef\xbb\xbf' + body.encode('utf-8')
+        self.assertEqual(len(list(parse_dem(without_decl))), 1)
+
+    def test_shift_jis_cp932_extension_characters(self):
+        # U+9AD9 exists in cp932 (Windows-31J) but not in strict
+        # JIS X 0208 shift_jis; a Shift_JIS-declared file containing
+        # it must still parse.
+        text = XML.format(enc='Shift_JIS').replace(
+            '</DEM>', '<mesh>\u9ad9</mesh></DEM>')
+        results = list(parse_dem(text.encode('cp932')))
+        self.assertEqual(len(results), 1)
+        self.assertEqual(results[0][3]['mesh'], '\u9ad9')
+
     def test_doctype_in_utf8_is_rejected(self):
         data = ('<?xml version="1.0" encoding="UTF-8"?>'
                 '<!DOCTYPE FG-GML [<!ENTITY x "y">]>' + XML.format(enc='UTF-8')[39:]).encode('utf-8')
