@@ -530,12 +530,17 @@ def prepare_inputs(c,work,gdal,osr,feedback=None):
                 raise ValueError('GSI old/new datum labels are mixed. Unify elevation realizations before merging.')
             if c['input_type']=='gsi' and outputs:
                 outputs=normalize_gsi_groups(outputs,work,c,gdal,osr,feedback)
-        if any(isinstance(s,dict) and s.get('jgd2024_horizontal_alias') for s in report['sources']):
-            # r5: the jgd2024 -> EPSG:6668 mapping is an approximation
-            # between datum realizations; say so in the report.
-            report['crs_alias_note']=('GSI files declaring fguuid:jgd2024.bl are treated as EPSG:6668. '
-                'JGD2024 and JGD2011 are different datum realizations, so positions may differ '
-                'at the centimetre level (approximation).')
+        if any(isinstance(s,dict) and str(s.get('original_srs','')).lower() in
+               ('fguuid:jgd2011.bl','fguuid:jgd2024.bl') for s in report['sources']):
+            # r5: EPSG:6668 itself was redefined between EPSG dataset
+            # versions (JGD2011 -> JGD2024, datum EPSG:1128), so which
+            # realization this alias denotes depends on the GDAL/PROJ
+            # version in use; the mapping is an approximation either
+            # way and must not be treated as exact identity.
+            report['crs_alias_note']=('GSI files declaring fguuid:jgd2011.bl or fguuid:jgd2024.bl are '
+                'treated as EPSG:6668. The EPSG dataset redefined code 6668 from JGD2011 to JGD2024, '
+                'so the realization it denotes depends on the GDAL/PROJ version; positions may differ '
+                'at the centimetre level (approximation, not identity).')
         if not outputs:
             ignored=report.get('ignored') or []
             if ignored:
