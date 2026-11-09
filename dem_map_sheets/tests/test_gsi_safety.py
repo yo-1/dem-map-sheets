@@ -160,3 +160,20 @@ class GsiEncodingGuardTests(unittest.TestCase):
 
 if __name__ == '__main__':
     unittest.main()
+
+
+class EncodingAliasTests(unittest.TestCase):
+    """R-8b: safe aliases are normalised; unsafe encodings stay out."""
+
+    def test_aliases_accepted(self):
+        for declared in ('UTF8', 'utf_8', 'SJIS', 'Windows-31J', 'eucjp',
+                         'euc_jp', 'latin1', 'US-ASCII'):
+            data = XML.format(enc=declared).encode(declared)
+            with self.subTest(declared=declared):
+                self.assertEqual(len(list(parse_dem(data))), 1)
+
+    def test_unsafe_or_unknown_encodings_rejected(self):
+        for declared in ('UTF-16', 'utf-32', 'koi8-r', 'bogus-enc'):
+            data = XML.format(enc=declared).encode('utf-8')
+            with self.subTest(declared=declared), self.assertRaises(ValueError):
+                list(parse_dem(data))
