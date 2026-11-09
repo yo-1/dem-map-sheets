@@ -32,7 +32,17 @@ def save_profile(path, parameters):
             temporary.unlink(missing_ok=True)
 
 def load_profile(path, allowed):
-    payload = json.loads(Path(path).read_text(encoding='utf-8-sig'))
+    try:
+        payload = json.loads(Path(path).read_text(encoding='utf-8-sig'))
+    except json.JSONDecodeError as exc:
+        raise ValueError(
+            f'設定ファイルのJSON形式が正しくありません（{exc.lineno}行目 '
+            f'{exc.colno}列目付近）。ファイルの内容を確認してください。'
+            '現在の設定は変更されていません。') from exc
+    except UnicodeDecodeError as exc:
+        raise ValueError(
+            '設定ファイルをUTF-8で読み取れません。文字コードを確認してください。'
+            '現在の設定は変更されていません。') from exc
     if not isinstance(payload, dict) or payload.get('format') != 'dem-map-sheets-settings' or payload.get('schema_version') != 1:
         raise ValueError('DEM Map Sheets設定JSON（schema_version=1）を選択してください。')
     values = payload.get('parameters')
