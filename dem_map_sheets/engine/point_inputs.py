@@ -74,21 +74,21 @@ def transform_bounds(bounds,source,target,osr):
 def _ascii_temp_area():
     """Create a temporary ASCII directory for PDAL-facing files.
 
-    Candidates, in order: the system temp area, $DEM_MAP_SHEETS_TEMP,
-    and on Windows the conventional ASCII locations C:\\Temp and
-    %ProgramData%\\DEMMapSheets (relevant when the user profile -
-    and therefore TEMP - itself contains non-ASCII characters).
-    Returns the first creatable ASCII directory; if none exists,
-    returns a non-ASCII one and the staging check raises its clear
-    bilingual error.
+    Only user-private or explicitly designated locations are used:
+    the directory named by the DEM_MAP_SHEETS_TEMP environment
+    variable (an explicit designation wins over the default), then
+    the system temp area (per-user by OS design). Shared
+    locations are never auto-created or silently adopted: a
+    world-writable scratch folder could be pre-created or watched
+    by another local account, so if no safe ASCII area exists the
+    caller gets a non-ASCII area and the staging check stops with
+    its bilingual error instead.
     """
     import tempfile
-    candidates=[None]
+    candidates=[]
     env_dir=os.environ.get('DEM_MAP_SHEETS_TEMP')
     if env_dir:candidates.append(env_dir)
-    if os.name=='nt':
-        candidates.append(r'C:\Temp')
-        candidates.append(str(Path(os.environ.get('ProgramData',r'C:\ProgramData'))/'DEMMapSheets'))
+    candidates.append(None)
     created=[]
     for base in candidates:
         try:
@@ -119,7 +119,7 @@ def stage_unicode_source(path,work,number,feedback=None):
     if str(source).isascii():return str(source),None,None
     stage=Path(work)/'pdal_ascii_inputs'
     if not str(stage.resolve()).isascii():
-        raise ValueError('PDAL cannot read the Unicode input path and no ASCII work area is available (the system temporary folder also contains non-ASCII characters). Choose an ASCII-only output folder such as C:\\gis_data\\output.（PDALが使える作業領域を確保できません。出力先にはASCIIのみのフォルダーを指定してください）')
+        raise ValueError('PDAL cannot read the Unicode input path and no ASCII work area is available (the system temporary folder also contains non-ASCII characters). Set the DEM_MAP_SHEETS_TEMP environment variable to a user-private ASCII-only folder (for example C:\\gis_data\\temp), or choose an ASCII-only output folder such as C:\\gis_data\\output.（PDALが使える安全な作業領域を確保できません。環境変数 DEM_MAP_SHEETS_TEMP に、ご自身専用のASCIIのみのフォルダーを設定してください）')
     stage.mkdir(parents=True,exist_ok=True)
     destination=stage/f'input_{number:06d}{source.suffix.lower()}'
     if destination.exists():destination.unlink()
