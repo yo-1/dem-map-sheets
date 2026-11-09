@@ -317,7 +317,15 @@ def text_grid(path,dest,c,gdal,osr,feedback=None):
     for x,y,z in text_rows(path,c,feedback):
         xmin=min(xmin,x);xmax=max(xmax,x);ymin=min(ymin,y);ymax=max(ymax,y);count+=1
     if not count:raise ValueError('No valid text elevations: '+str(path))
-    step=c['text_grid_cell'];w=round((xmax-xmin)/step)+1;h=round((ymax-ymin)/step)+1
+    step=c['text_grid_cell']
+    if not math.isfinite(step) or step<=0:
+        raise ValueError('text_grid_cell must be a positive finite number')
+    if not all(math.isfinite(v) for v in (xmin,ymin,xmax,ymax)):
+        raise ValueError('Text grid extent is not finite')
+    w=round((xmax-xmin)/step)+1;h=round((ymax-ymin)/step)+1
+    limit=c.get('max_input_pixels') or c.get('max_pixels') or 25000000
+    if w*h>limit:
+        raise ValueError(f'Text grid exceeds input pixel limit: {w}x{h} > {limit}')
     backing=Path(str(dest)+'.grid.bin')
     a=np.memmap(backing,dtype='float32',mode='w+',shape=(h,w))
     try:
