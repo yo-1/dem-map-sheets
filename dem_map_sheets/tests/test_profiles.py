@@ -31,6 +31,21 @@ class ProfileTests(unittest.TestCase):
                 with self.assertRaises(ValueError):
                     load_profile(p, ['CELL'])
 
+    def test_malformed_json_error_is_japanese(self):
+        with tempfile.TemporaryDirectory() as d:
+            p = Path(d) / 'broken.json'
+            p.write_text('{"format":', encoding='utf-8')
+            with self.assertRaisesRegex(ValueError, 'JSON形式が正しくありません.*行目.*列目') as cm:
+                load_profile(p, ['CRS'])
+            self.assertNotIn('Expecting value', str(cm.exception))
+
+    def test_invalid_utf8_error_is_japanese(self):
+        with tempfile.TemporaryDirectory() as d:
+            p = Path(d) / 'broken.json'
+            p.write_bytes(b'\\xff\\xfe')
+            with self.assertRaisesRegex(ValueError, 'UTF-8で読み取れません'):
+                load_profile(p, ['CRS'])
+
     def test_vertical_default_selection_and_legacy_override(self):
         self.assertEqual(resolve_vertical(0, ''), '不明・未確認')
         self.assertEqual(resolve_vertical(2, ''), '測地成果2024（標高）')
