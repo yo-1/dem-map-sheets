@@ -155,12 +155,12 @@ def validate_input(c):
     if 'cell_size' in c and (isinstance(c['cell_size'],bool)
             or not isinstance(c['cell_size'],(int,float))
             or not math.isfinite(c['cell_size']) or c['cell_size']<=0):
-        raise ValueError('cell_size must be finite and positive')
+        raise ValueError('cell_size must be finite and positive（セルサイズは有限の正数を指定してください）')
     if 'target_crs' in c and (not isinstance(c['target_crs'],str)
             or not c['target_crs'].strip()):
-        raise ValueError('target_crs is required')
+        raise ValueError('target_crs is required（対象CRSを指定してください）')
     if 'max_pixels' in c and (type(c['max_pixels']) is not int or c['max_pixels']<1):
-        raise ValueError('max_pixels must be a positive integer')
+        raise ValueError('max_pixels must be a positive integer（最大画素数は正の整数で指定してください）')
     for key in ('recursive','normalize_rasters'):
         if type(c[key]) is not bool: raise ValueError(key+' must be boolean')
     for key in ('text_skip_rows','point_tile_size','max_points_auto','max_input_pixels','max_input_files'):
@@ -191,8 +191,8 @@ def validate_input(c):
         if not math.isfinite(scale) or scale<=0: raise ValueError('forest_lem_coordinate_scale must be auto or positive')
     if c['forest_grid_cell'] != 'auto':
         try: grid_cell=float(c['forest_grid_cell'])
-        except (TypeError,ValueError) as exc: raise ValueError('forest_grid_cell must be auto or positive') from exc
-        if not math.isfinite(grid_cell) or grid_cell<=0: raise ValueError('forest_grid_cell must be auto or positive')
+        except (TypeError,ValueError) as exc: raise ValueError('forest_grid_cell must be auto or positive（森林格子セルは auto または正の値を指定してください）') from exc
+        if not math.isfinite(grid_cell) or grid_cell<=0: raise ValueError('forest_grid_cell must be auto or positive（森林格子セルは auto または正の値を指定してください）')
     if c['forest_nodata'] is not None and (isinstance(c['forest_nodata'],bool) or
             not isinstance(c['forest_nodata'],(int,float)) or not math.isfinite(c['forest_nodata'])):
         raise ValueError('forest_nodata must be null or a finite number')
@@ -294,7 +294,7 @@ def normalize(path, dest, c, gdal, osr, feedback=None, override_nodata=True):
     if src is None or src.RasterCount!=1:raise ValueError('Expected single-band elevation raster: '+str(path))
     band=src.GetRasterBand(1)
     if override_nodata and c['source_nodata'] is None and band.GetNoDataValue() is None:
-        raise ValueError('Source raster has no NoData definition; specify source_nodata: '+str(path))
+        raise ValueError('Source raster has no NoData definition; specify source_nodata: '+str(path)+'（入力ラスタにNoDataが定義されていません。source_nodata（元データの無効値）を指定してください）')
     if band.GetScale() not in (None,1) or band.GetOffset() not in (None,0):
         raise ValueError('Apply raster scale/offset to elevation values before import: '+str(path))
     source=crs_of(c['input_crs'] or src.GetProjection(),osr)
@@ -416,9 +416,9 @@ def prepare_inputs(c,work,gdal,osr,feedback=None):
         try:
             configured_cell=float(c['forest_grid_cell'])
         except (TypeError,ValueError) as exc:
-            raise ValueError('forest_grid_cell must be auto or positive') from exc
+            raise ValueError('forest_grid_cell must be auto or positive（森林格子セルは auto または正の値を指定してください）') from exc
         if not math.isfinite(configured_cell) or configured_cell<=0:
-            raise ValueError('forest_grid_cell must be auto or positive')
+            raise ValueError('forest_grid_cell must be auto or positive（森林格子セルは auto または正の値を指定してください）')
     work=Path(work);work.mkdir(parents=True,exist_ok=False)
     report={'status':'running','input_type':c['input_type'],'sources':[],
             'vertical_reference':c['vertical_reference'],'vertical_conversion':False}
@@ -553,9 +553,9 @@ def prepare_inputs(c,work,gdal,osr,feedback=None):
             ignored=report.get('ignored') or []
             if ignored:
                 first='; '.join(f"{i['path']}: {i['reason']}" for i in ignored[:3])
-                raise ValueError(f'No usable DEMs found: {len(ignored)} input(s) ignored; '
+                raise ValueError(f'使用可能なDEMが見つかりません（No usable DEMs found）: {len(ignored)} input(s) ignored; '
                                  f'first reasons: {first}')
-            raise ValueError('No usable DEMs found (XML may contain metadata only)')
+            raise ValueError('使用可能なDEMが見つかりません（No usable DEMs found (XML may contain metadata only)）')
         report.update(status='completed',prepared_rasters=outputs);save()
         return {**c,'inputs':outputs,'source_nodata':None},report
     except BaseException as exc:

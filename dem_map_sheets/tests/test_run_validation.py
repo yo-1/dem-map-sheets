@@ -91,3 +91,22 @@ class RunCrsValidationTests(unittest.TestCase):
             with self.assertRaises(ValueError):
                 run(cfg, out, gdal, osr, None)
             self.assertFalse(out.exists())
+
+
+class EntryMessageLanguageTests(unittest.TestCase):
+    """Entry-validation errors carry a Japanese explanation for GUI
+    users while keeping the English technical message for API use."""
+
+    def test_cell_size_error_has_japanese_guidance(self):
+        cfg = _valid_config(cell_size=float('nan'), inputs=[])
+        with tempfile.TemporaryDirectory() as td:
+            with self.assertRaises(ValueError) as ctx:
+                run(cfg, Path(td) / 'out', gdal, osr, None)
+        self.assertIn('セルサイズ', str(ctx.exception))
+
+    def test_target_crs_error_has_japanese_guidance(self):
+        cfg = _valid_config(target_crs='EPSG:99999', inputs=[])
+        with tempfile.TemporaryDirectory() as td:
+            with self.assertRaises(ValueError) as ctx:
+                run(cfg, Path(td) / 'out', gdal, osr, None)
+        self.assertIn('対象CRS', str(ctx.exception))
