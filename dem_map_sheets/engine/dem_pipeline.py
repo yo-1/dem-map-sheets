@@ -22,6 +22,52 @@ def materialize_geotiff(source,dest,gdal):
     return str(dest)
 
 
+def prune_work_after_failure(work,keep_suffixes=('.log','.stderr','.stdout','.json','.txt')):
+    """Delete bulky intermediates under work after a failure, keeping
+    diagnostic files (PDAL/GDAL logs, stderr captures, JSON records,
+    version text). Returns (removed_bytes, retained_bytes). Never
+    raises: pruning must not mask the original failure."""
+    work=Path(work);removed=0;retained=0
+    if not work.is_dir():return removed,retained
+    entries=sorted(work.rglob('*'),key=lambda p:len(p.parts),reverse=True)
+    for path in entries:
+        try:
+            if path.is_dir() and not path.is_symlink():
+                try:path.rmdir()
+                except OSError:pass
+                continue
+            size=path.stat().st_size
+            if path.name.endswith(keep_suffixes):retained+=size
+            else:path.unlink();removed+=size
+        except OSError:pass
+    return removed,retained
+
+
+def _record_failure(out,work,config,exc,feedback):
+    """Prune the failed run's work directory (unless keep_work) and
+    record the failure in run.json. Never raises."""
+    keep=bool(config.get('keep_work',False))
+    removed=None;retained=None
+    if keep:
+        retained_mode='all'
+        retained=sum(f.stat().st_size for f in Path(work).rglob('*')
+                     if f.is_file()) if Path(work).is_dir() else 0
+        removed=0
+    elif Path(work).is_dir():
+        removed,retained=prune_work_after_failure(work)
+        retained_mode='diagnostics_only'
+    else:
+        retained_mode='none'
+    try:
+        record={'status':'cancelled' if (feedback is not None and feedback.isCanceled()) else 'failed',
+            'error':str(exc),'merge_priority':config.get('merge_priority','last'),
+            'work_dir':str(work),'work_retained':retained_mode,
+            'work_removed_bytes':removed,'work_retained_bytes':retained}
+        (Path(out)/'run.json').write_text(json.dumps(record,ensure_ascii=False,indent=2),encoding='utf-8')
+    except Exception:
+        pass
+
+
 def merge_geotiffs(inputs,dest,gdal,first_wins=False,output_bounds=None,width=None,height=None):
     ordered=list(reversed(inputs)) if first_wins else list(inputs)
     vrt_path=Path(dest).with_suffix('.vrt')
@@ -41,6 +87,10 @@ def merge_geotiffs(inputs,dest,gdal,first_wins=False,output_bounds=None,width=No
         if ds is None: raise RuntimeError('GeoTIFF creation failed: '+str(dest))
         ds.FlushCache();ds=None
         return str(dest)
+    except BaseException:
+        # Do not leave a partial mosaic behind on failure (M-1/R-10).
+        Path(dest).unlink(missing_ok=True)
+        raise
     finally:
         vrt_path.unlink(missing_ok=True)
 
@@ -258,26 +308,30 @@ def run(config,output_dir,gdal,osr,feedback=None):
     work=out/'work';source_dir=out/'01_source_dem';source_dir.mkdir()
     c={**INPUT_DEFAULTS,**config}
     c['inputs']=discover(c['inputs'],'',c,feedback)
-    mode=config.get('merge_priority','last')
-    if mode=='auto':
-        work.mkdir(parents=True,exist_ok=False)
-        groups=_prepare_source_groups(c,work,source_dir,gdal,osr,feedback)
-        materialized=[p for g in groups for p in g['rasters']]
-        merged,priority_report=_merge_auto(c,groups,out,gdal,osr,feedback)
-        report={'mode':'per_source','sources':[g['input_report'] for g in groups]}
-    else:
-        prepared,report=prepare_inputs(c,work,gdal,osr,feedback)
-        materialized=[]
-        for i,path in enumerate(prepared['inputs'],1):
-            if feedback is not None and feedback.isCanceled():raise RuntimeError('Cancelled')
-            dest=source_dir/f'dem_{i:05d}.tif';materialized.append(materialize_geotiff(path,dest,gdal))
-            if feedback is not None:feedback.setProgress(min(55,5+50*i/max(1,len(prepared['inputs']))))
-        merged=merge_geotiffs(materialized,out/'02_merged_dem.tif',gdal,first_wins=(mode=='first'))
-        priority_report={'mode':mode}
-    manifest={'status':'completed','input_type':c['input_type'],'source_count':len(materialized),
-        'source_dems':materialized,'merged_dem':merged,'target_crs':c['target_crs'],'cell_size':c['cell_size'],
-        'vertical_reference':c['vertical_reference'],'vertical_conversion':False,'merge_priority':mode,
-        'priority_selection':priority_report,'input_report':report}
+    try:
+        mode=config.get('merge_priority','last')
+        if mode=='auto':
+            work.mkdir(parents=True,exist_ok=False)
+            groups=_prepare_source_groups(c,work,source_dir,gdal,osr,feedback)
+            materialized=[p for g in groups for p in g['rasters']]
+            merged,priority_report=_merge_auto(c,groups,out,gdal,osr,feedback)
+            report={'mode':'per_source','sources':[g['input_report'] for g in groups]}
+        else:
+            prepared,report=prepare_inputs(c,work,gdal,osr,feedback)
+            materialized=[]
+            for i,path in enumerate(prepared['inputs'],1):
+                if feedback is not None and feedback.isCanceled():raise RuntimeError('Cancelled')
+                dest=source_dir/f'dem_{i:05d}.tif';materialized.append(materialize_geotiff(path,dest,gdal))
+                if feedback is not None:feedback.setProgress(min(55,5+50*i/max(1,len(prepared['inputs']))))
+            merged=merge_geotiffs(materialized,out/'02_merged_dem.tif',gdal,first_wins=(mode=='first'))
+            priority_report={'mode':mode}
+        manifest={'status':'completed','input_type':c['input_type'],'source_count':len(materialized),
+            'source_dems':materialized,'merged_dem':merged,'target_crs':c['target_crs'],'cell_size':c['cell_size'],
+            'vertical_reference':c['vertical_reference'],'vertical_conversion':False,'merge_priority':mode,
+            'priority_selection':priority_report,'input_report':report}
+    except BaseException as exc:
+        _record_failure(out,work,config,exc,feedback)
+        raise
     (out/'run.json').write_text(json.dumps(manifest,ensure_ascii=False,indent=2),encoding='utf-8')
     if not config.get('keep_work',False):shutil.rmtree(work,ignore_errors=True)
     return manifest

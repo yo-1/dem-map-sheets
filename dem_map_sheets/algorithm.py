@@ -167,9 +167,18 @@ class DEMMapSheetsAlgorithm(QgsProcessingAlgorithm):
             return {'MERGED_DEM':manifest['merged_dem'],'SOURCE_DEMS':str(result_dir/'01_source_dem'),
                     'XYZ_FOLDER':xyz,'MANIFEST':str(result_dir/'run.json')}
         except Exception as exc:
-            result_dir.mkdir(parents=True,exist_ok=True)
-            record=result_dir/'run.json'
-            failed=json.loads(record.read_text(encoding='utf-8')) if record.exists() else {'merge_priority':c['merge_priority']}
-            failed.update(status='cancelled' if feedback.isCanceled() else 'failed',error=str(exc))
-            record.write_text(json.dumps(failed,ensure_ascii=False,indent=2),encoding='utf-8')
+            # Recording the failure must never mask the original
+            # exception (M-1b): a corrupt run.json or an unwritable
+            # result directory falls back silently.
+            try:
+                result_dir.mkdir(parents=True,exist_ok=True)
+                record=result_dir/'run.json'
+                try:
+                    failed=json.loads(record.read_text(encoding='utf-8')) if record.exists() else {'merge_priority':c['merge_priority']}
+                except Exception:
+                    failed={'merge_priority':c['merge_priority']}
+                failed.update(status='cancelled' if feedback.isCanceled() else 'failed',error=str(exc))
+                record.write_text(json.dumps(failed,ensure_ascii=False,indent=2),encoding='utf-8')
+            except Exception:
+                pass
             raise QgsProcessingException(str(exc)) from exc
