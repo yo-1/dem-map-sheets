@@ -354,15 +354,21 @@ def _merge_auto(c,groups,out,gdal,osr,feedback=None):
 
 def run(config,output_dir,gdal,osr,feedback=None):
     # The pipeline relies on GDAL raising exceptions, but enabling
-    # them is process-global state (W-13): scope it to this call with
-    # ExceptionMgr so the caller's setting - QGIS, another plugin, a
-    # script - is restored exactly on exit. GDAL builds without
-    # ExceptionMgr keep the previous behaviour.
-    mgr=getattr(gdal,'ExceptionMgr',None)
-    if mgr is None:
+    # them is process-global state (W-13): scope it to this call and
+    # restore the caller's setting - QGIS, another plugin, a script -
+    # exactly on exit. The restore is a manual flag flip on purpose:
+    # GDAL 3.8.4's ExceptionMgr.__exit__ re-raises a still-pending
+    # GDAL error (e.g. a failed CRS lookup) and would mask the
+    # pipeline's own exception (found by CI).
+    get_state=getattr(gdal,'GetUseExceptions',None)
+    if get_state is None:
         return _run(config,output_dir,gdal,osr,feedback)
-    with mgr(useExceptions=True):
+    previous=get_state()
+    try:
+        if not previous:gdal.UseExceptions()
         return _run(config,output_dir,gdal,osr,feedback)
+    finally:
+        if not previous:gdal.DontUseExceptions()
 
 
 def _run(config,output_dir,gdal,osr,feedback=None):

@@ -1,7 +1,7 @@
 """W-13: GDAL exception state is process-global. The plugin must not
 flip it for the whole QGIS session (the old algorithm.py called
-gdal.UseExceptions() and never restored it). run() scopes the
-setting with ExceptionMgr and restores the caller's state exactly,
+gdal.UseExceptions() and never restored it). run() enables exceptions
+only for its own call and restores the caller's state exactly,
 on success and on failure."""
 import tempfile
 import unittest
@@ -36,7 +36,7 @@ def _cfg(src):
     return c
 
 
-@unittest.skipUnless(hasattr(gdal, 'ExceptionMgr'), 'ExceptionMgr unavailable')
+@unittest.skipUnless(hasattr(gdal, 'GetUseExceptions'), 'GetUseExceptions unavailable')
 class ExceptionScopeTests(unittest.TestCase):
     def setUp(self):
         self._tmp = tempfile.TemporaryDirectory()
