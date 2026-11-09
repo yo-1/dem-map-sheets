@@ -96,5 +96,34 @@ class RealPdalTests(unittest.TestCase):
         self._check_block(outputs)
 
 
+    def test_cross_crs_reprojection_lands_where_gdal_expects(self):
+        # E-1 probe: EPSG:6677 -> EPSG:6678 (adjacent plane zone).
+        # If PDAL applied the axis order differently from GDAL, the
+        # points would land far away and the crop would yield no
+        # valid cells near the GDAL-computed destination bounds.
+        from dem_map_sheets.engine.input_sources import crs_of
+        from dem_map_sheets.engine.point_inputs import transform_bounds
+        work = self.root / 'work_cross'
+        work.mkdir()
+        cfg = self._cfg(input_type='lidar', inputs=[str(self.las)],
+                        target_crs='EPSG:6678')
+        outputs, _meta = points_to_rasters(cfg, work, gdal, osr, None)
+        self.assertEqual(len(outputs), 1)
+        expected = transform_bounds((0.0, 0.0, 30.0, 30.0),
+                                    crs_of('EPSG:6677', osr),
+                                    crs_of('EPSG:6678', osr), osr)
+        ds = gdal.Open(outputs[0])
+        gt = ds.GetGeoTransform()
+        arr = ds.GetRasterBand(1).ReadAsArray()
+        ds = None
+        west, north = gt[0], gt[3]
+        east, south = west + gt[1] * arr.shape[1], north + gt[5] * arr.shape[0]
+        cx = (expected[0] + expected[2]) / 2
+        cy = (expected[1] + expected[3]) / 2
+        self.assertTrue(west - 1000 < cx < east + 1000, (west, east, cx))
+        self.assertTrue(south - 1000 < cy < north + 1000, (south, north, cy))
+        self.assertGreater((arr != -999999.0).sum(), 0)
+
+
 if __name__ == '__main__':
     unittest.main()
