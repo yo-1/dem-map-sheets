@@ -56,6 +56,12 @@ class SettingsDialog(AlgorithmDialog):
             for key, value in values.items():
                 if key in ('FILES', 'INPUT_FOLDER', 'PRIORITY_METADATA', 'PDAL', 'OUTPUT'):
                     continue
+                # An unset output CRS is a valid saved dialog state even
+                # though CRS is mandatory when processing starts. Preserve
+                # the blank widget state here; processAlgorithm() remains
+                # responsible for rejecting execution without a valid CRS.
+                if key == 'CRS' and value in (None, ''):
+                    continue
                 if not self.algorithm().parameterDefinition(key).checkValueIsAcceptable(value, context):
                     raise ValueError('設定値が不正です: ' + key)
             self.setParameters(values)
