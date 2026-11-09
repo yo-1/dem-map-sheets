@@ -68,7 +68,7 @@ class SettingsDialog(AlgorithmDialog):
                         continue
                     if not isinstance(value, str):
                         raise ValueError('設定値が不正です: ' + key)
-                    crs = QgsCoordinateReferenceSystem.fromUserInput(value)
+                    crs = QgsCoordinateReferenceSystem(value)
                     if not crs.isValid():
                         raise ValueError(
                             f'設定ファイルの {key} をこのPCで解釈できません: {value!r}。'
