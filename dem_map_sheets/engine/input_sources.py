@@ -401,6 +401,16 @@ def normalize_gsi_groups(paths,work,c,gdal,osr,feedback=None):
 def prepare_inputs(c,work,gdal,osr,feedback=None):
     if c['input_type']=='raster' and not c['normalize_rasters'] and not c['input_crs']:
         return c, {'mode':'raster_passthrough'}
+    if c['input_type']=='forest' and c['forest_grid_cell']!='auto':
+        # Configuration, not input data: an invalid configured cell
+        # size must raise here instead of marking every input as
+        # ignored inside the per-input ValueError handler (M-3).
+        try:
+            configured_cell=float(c['forest_grid_cell'])
+        except (TypeError,ValueError) as exc:
+            raise ValueError('forest_grid_cell must be auto or positive') from exc
+        if not math.isfinite(configured_cell) or configured_cell<=0:
+            raise ValueError('forest_grid_cell must be auto or positive')
     work=Path(work);work.mkdir(parents=True,exist_ok=False)
     report={'status':'running','input_type':c['input_type'],'sources':[],
             'vertical_reference':c['vertical_reference'],'vertical_conversion':False}

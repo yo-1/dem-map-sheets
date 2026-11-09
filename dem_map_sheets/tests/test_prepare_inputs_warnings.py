@@ -99,5 +99,21 @@ class ForestIgnoredWarningTests(unittest.TestCase):
         self.assertEqual(len(feedback.warnings), 1)
 
 
+class ConfigVersusInputTests(PrepareBase):
+    """M-3 follow-up: configuration errors must not look like bad inputs."""
+
+    def test_bad_forest_grid_cell_raises_not_ignored(self):
+        good = self._grid_csv('good.csv', [(0, 0), (2, 0), (0, 2), (2, 2)])
+        cfg = _config(inputs=[good], forest_grid_cell='abc')
+        with self.assertRaises(ValueError):
+            prepare_inputs(cfg, self.work, _Feedback(), gdal, osr)
+
+    def test_nonpositive_forest_grid_cell_raises(self):
+        good = self._grid_csv('good.csv', [(0, 0), (2, 0), (0, 2), (2, 2)])
+        cfg = _config(inputs=[good], forest_grid_cell='0')
+        with self.assertRaises(ValueError):
+            prepare_inputs(cfg, self.work, _Feedback(), gdal, osr)
+
+
 if __name__ == '__main__':
     unittest.main()
