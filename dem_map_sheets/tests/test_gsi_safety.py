@@ -64,6 +64,42 @@ class TraversalEquivalenceTests(unittest.TestCase):
                          [(0, 19999), (1, 19999), (2, 19999)])
 
 
+class TraversalEndToEndTests(unittest.TestCase):
+    RULE_XML = ('<?xml version="1.0" encoding="UTF-8"?>'
+                '<FG-GML><DEM><Envelope srsName="fguuid:jgd2011.bl">'
+                '<lowerCorner>35.0 139.0</lowerCorner><upperCorner>35.1 139.1</upperCorner>'
+                '</Envelope><GridEnvelope><low>0 0</low><high>1 1</high></GridEnvelope>'
+                '<sequenceRule order="{order}">Linear</sequenceRule>'
+                '<startPoint>{start}</startPoint>'
+                '<tupleList>{tuples}</tupleList>'
+                '</DEM></FG-GML>')
+
+    def test_parse_order_and_start_placement(self):
+        data = self.RULE_XML.format(
+            order='+x-y', start='0 0',
+            tuples='land,100.0 land,101.0 land,102.0 land,103.0').encode('utf-8')
+        arr, _gt, _crs, meta = list(parse_dem(data))[0]
+        self.assertEqual(arr.tolist(), [[100.0, 101.0], [102.0, 103.0]])
+        self.assertEqual(meta['traversal_order'], '+x-y')
+        self.assertEqual(meta['start_point'], [0, 0])
+
+    def test_parse_mid_grid_start_keeps_remaining_cells(self):
+        data = self.RULE_XML.format(
+            order='+x+y', start='0 0',
+            tuples='land,102.0 land,103.0').encode('utf-8')
+        arr, _gt, _crs, meta = list(parse_dem(data))[0]
+        self.assertEqual(meta['populated_count'], 2)
+        self.assertEqual(arr[0].tolist(), [102.0, 103.0])
+
+    def test_traversal_outside_start_message(self):
+        with self.assertRaises(ValueError) as ctx:
+            list(traversal_indices((0, 0), (3, 2), (9, 9), '+x+y'))
+        self.assertEqual(str(ctx.exception), 'GSI startPoint outside grid traversal')
+
+    def test_max_pixels_default_unchanged(self):
+        self.assertEqual(parse_dem.__defaults__[0], 25000000)
+
+
 class GsiEncodingGuardTests(unittest.TestCase):
     def test_valid_utf8_parses(self):
         results = list(parse_dem(XML.format(enc='UTF-8').encode('utf-8')))
