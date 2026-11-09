@@ -353,6 +353,19 @@ def _merge_auto(c,groups,out,gdal,osr,feedback=None):
 
 
 def run(config,output_dir,gdal,osr,feedback=None):
+    # The pipeline relies on GDAL raising exceptions, but enabling
+    # them is process-global state (W-13): scope it to this call with
+    # ExceptionMgr so the caller's setting - QGIS, another plugin, a
+    # script - is restored exactly on exit. GDAL builds without
+    # ExceptionMgr keep the previous behaviour.
+    mgr=getattr(gdal,'ExceptionMgr',None)
+    if mgr is None:
+        return _run(config,output_dir,gdal,osr,feedback)
+    with mgr(useExceptions=True):
+        return _run(config,output_dir,gdal,osr,feedback)
+
+
+def _run(config,output_dir,gdal,osr,feedback=None):
     c={**INPUT_DEFAULTS,**config}
     # KD-2: validate_input existed but was never called; configuration
     # inconsistencies now fail here with a clear error, before any
@@ -410,7 +423,7 @@ def run(config,output_dir,gdal,osr,feedback=None):
             'warnings':output_warnings,
             'source_dems':materialized,'merged_dem':merged,'target_crs':c['target_crs'],'cell_size':c['cell_size'],
             'vertical_reference':c['vertical_reference'],'vertical_conversion':False,'merge_priority':mode,
-            'priority_selection':priority_report,'input_report':report}
+            'priority_selection':priority_report,'input_report':report,'output_nodata':NODATA}
     except BaseException as exc:
         _record_failure(out,work,config,exc,feedback)
         raise

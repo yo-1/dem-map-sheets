@@ -104,7 +104,8 @@ class DEMMapSheetsAlgorithm(QgsProcessingAlgorithm):
         from .engine.input_sources import explicit_file_parameter
         from .engine.dem_pipeline import run
         from .engine.terrainrgb import write_terrainrgb_xyz
-        gdal.UseExceptions()
+        # GDAL exceptions are scoped inside engine run() (W-13); the
+        # plugin must not flip the process-global setting for QGIS.
         mode=['raster','gsi','text','lidar','forest'][self.parameterAsEnum(parameters,'INPUT_TYPE',context)]
         raw=parameters.get('FILES')
         paths=explicit_file_parameter(raw) if not QgsVariantUtils.isNull(raw) and raw not in ('',[]) else []
