@@ -1,4 +1,4 @@
-name: csmap
+name: dem-map-sheets-pointcloud
 channels:
   - conda-forge
 dependencies:
