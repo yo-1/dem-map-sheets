@@ -215,7 +215,7 @@ def discover(inputs, base_dir, c, feedback=None):
                     lambda: sorted(glob.glob(str(p), recursive=c['recursive'])), feedback)]
             else:
                 matches = []
-        if not matches:raise ValueError('No input matched: '+str(entry))
+        if not matches:raise ValueError('No input matched: '+str(entry)+'（入力ファイルが見つかりません。パスの綴りとファイルの存在を確認してください）')
         found=0
         companion_only=0
         for match in matches:
@@ -239,7 +239,7 @@ def discover(inputs, base_dir, c, feedback=None):
                 identity=os.path.normcase(path)
                 if identity not in seen:files.append(path);seen.add(identity)
                 if len(files)>c['max_input_files']:raise ValueError('Too many input files')
-        if not found and not companion_only:raise ValueError('No supported files in: '+str(entry))
+        if not found and not companion_only:raise ValueError('No supported files in: '+str(entry)+'（このフォルダーには対応形式のファイルがありません。対応形式のファイルを含むフォルダーを指定してください）')
     if not files:
         # 個々のentryは「同梱物のみ」で有効化(companion_only>0)されたため上の
         # per-entryチェックは通過したが、全entryを合算した結果、有効な入力が

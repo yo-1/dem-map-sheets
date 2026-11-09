@@ -170,7 +170,7 @@ def load_priority_metadata(path):
     """
     if not path: return []
     p=Path(path)
-    if not p.is_file(): raise ValueError('Priority metadata file not found: '+str(p))
+    if not p.is_file(): raise ValueError('Priority metadata file not found: '+str(p)+'（優先順位メタデータファイルが見つかりません。パスを確認してください）')
     if p.suffix.lower()=='.json':
         data=json.loads(p.read_text(encoding='utf-8-sig'))
         rows=data.get('sources',[]) if isinstance(data,dict) else data
@@ -345,7 +345,7 @@ def _merge_auto(c,groups,out,gdal,osr,feedback=None):
         if feedback is not None:
             feedback.pushInfo(f'Priority sheet {sheet.code}: {Path(ranking[0]["source"]).name}')
             feedback.setProgress(min(65,10+55*number/max(1,len(candidates))))
-    if not written:raise ValueError('Automatic priority produced no nonempty map sheets')
+    if not written:raise ValueError('Automatic priority produced no nonempty map sheets（自動優先順位の結果、対象範囲に重なる図郭が1件もありませんでした。入力DEMの範囲と座標系が対象地域に合っているか、優先順位メタデータの対象範囲を確認してください）')
     merged=merge_geotiffs(written,out/'02_merged_dem.tif',gdal,False)
     return merged,dict(mode='automatic',plane_zone=zone,sheet_level=2500,
         criteria=['survey_year_desc','accuracy_m_asc','ground_density_desc','sheet_coverage_desc'],
