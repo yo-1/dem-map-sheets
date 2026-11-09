@@ -324,3 +324,43 @@ class ZipSafetyTests(TempDirCase):
 
 if __name__ == '__main__':
     unittest.main()
+
+
+class LemSpacingValidationTests(TempDirCase):
+    """KD-4: non-positive or non-finite LEM grid spacing is rejected
+    (fail-closed) instead of silently misplacing the raster."""
+
+    def test_invalid_dx_rejected(self):
+        for bad in (0.0, -5.0):
+            with self.subTest(dx=bad):
+                lem, meta = standard_lem(self.root, f'dx{bad}', dx=bad)
+                with self.assertRaisesRegex(ValueError, 'spacing'):
+                    read_lem(lem, meta, BIG)
+        for bad in ('nan', 'inf'):
+            with self.subTest(dx=bad):
+                lem, meta = standard_lem(self.root, f'dx{bad}')
+                text = Path(meta).read_text(encoding='utf-8')
+                Path(meta).write_text(
+                    text.replace('東西方向のデータ間隔,5.0',
+                                 f'東西方向のデータ間隔,{bad}'), encoding='utf-8')
+                with self.assertRaisesRegex(ValueError, 'spacing'):
+                    read_lem(lem, meta, BIG)
+
+    def test_invalid_dy_rejected(self):
+        lem, meta = standard_lem(self.root, 'dy0', dy=0.0)
+        with self.assertRaisesRegex(ValueError, 'spacing'):
+            read_lem(lem, meta, BIG)
+
+    def test_invalid_spacing_rejected_with_explicit_scale(self):
+        # An explicit coordinate scale used to bypass the spacing
+        # consistency check; the fail-closed check applies anyway.
+        lem, meta = standard_lem(self.root, 'dxneg', dx=-5.0)
+        with self.assertRaisesRegex(ValueError, 'spacing'):
+            read_lem(lem, meta, BIG, coordinate_scale='0.01')
+
+    def test_error_names_value_and_file(self):
+        lem, meta = standard_lem(self.root, 'dxzero', dx=0.0)
+        with self.assertRaises(ValueError) as ctx:
+            read_lem(lem, meta, BIG)
+        self.assertIn('0.0', str(ctx.exception))
+        self.assertIn(str(meta), str(ctx.exception))

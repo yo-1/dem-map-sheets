@@ -89,6 +89,13 @@ def _parse_metadata_fields(text, path):
         if name in values: values[name] = int(float(values[name]))
     for name in ('dx', 'dy', 'south_n', 'west_e', 'north_n', 'east_e'):
         values[name] = float(values[name])
+    # KD-4 (fail-closed): a non-positive or non-finite grid spacing
+    # silently misplaces the raster (dx<0 flips it); reject it here,
+    # after metadata interpretation and before any georeferencing.
+    for name in ('dx', 'dy'):
+        if not math.isfinite(values[name]) or values[name] <= 0:
+            raise ValueError(f'LEM grid spacing {name} must be finite and positive: '
+                             f'{values[name]} ({path})')
     return values
 
 
