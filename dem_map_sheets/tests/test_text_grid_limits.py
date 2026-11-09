@@ -54,6 +54,12 @@ class TextGridLimitTests(unittest.TestCase):
             text_grid(src, dest, self._cfg(max_input_pixels=25000000), gdal, osr, None)
         self.assertFalse(Path(str(dest) + '.grid.bin').exists())
 
+    def test_overflowing_dimensions_raise_value_error(self):
+        src = self._write('tiny.csv', ['0,0,100', '1,0,101'])
+        with self.assertRaises(ValueError):
+            text_grid(src, self.dir / 'tiny.tif',
+                      self._cfg(text_grid_cell=1e-320), gdal, osr, None)
+
     def test_invalid_step_is_rejected(self):
         src = self._write('step.csv', ['0,0,100', '10,0,101'])
         for step in (0.0, -10.0, float('nan'), float('inf')):

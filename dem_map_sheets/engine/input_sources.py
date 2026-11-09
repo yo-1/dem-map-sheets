@@ -322,7 +322,8 @@ def text_grid(path,dest,c,gdal,osr,feedback=None):
         raise ValueError('text_grid_cell must be a positive finite number')
     if not all(math.isfinite(v) for v in (xmin,ymin,xmax,ymax)):
         raise ValueError('Text grid extent is not finite')
-    w=round((xmax-xmin)/step)+1;h=round((ymax-ymin)/step)+1
+    try: w=round((xmax-xmin)/step)+1;h=round((ymax-ymin)/step)+1
+    except OverflowError as exc: raise ValueError('Text grid dimensions are too large') from exc
     limit=c.get('max_input_pixels') or c.get('max_pixels') or 25000000
     if w*h>limit:
         raise ValueError(f'Text grid exceeds input pixel limit: {w}x{h} > {limit}')
