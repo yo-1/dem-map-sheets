@@ -10,10 +10,10 @@ code is intentionally untouched):
 - Diagnostic material must survive: PDAL logs (+ .stderr), pipeline
   JSON files, point_sources.json and pdal_version.txt.
 
-Tests that fail against the current code are marked
-@unittest.expectedFailure so the normal CI suite stays green; when
-the M-1 fix lands they turn into unexpected successes and the marker
-must be removed. The two behaviour-preservation tests are unmarked.
+All six tests are ordinary passing tests: the four cleanup cases
+failed against the pre-fix code (they were introduced as expected
+failures in 6eed194) and pass since the M-1 fix; the two
+behaviour-preservation tests pin the keep-logs side of the contract.
 
 A fake PDAL executable (POSIX shell-launched Python) stands in for
 real PDAL, so these are mocked tests, not real-PDAL verification.
@@ -129,7 +129,6 @@ class TempCleanupTests(unittest.TestCase):
     def _buffer_leftovers(self):
         return list(self.work.glob('*_buffer.tif'))
 
-    @unittest.expectedFailure
     def test_second_input_failure_removes_staged_copies(self):
         os.environ['FAKE_PDAL_FAIL_INFO_ON'] = '2'
         with self.assertRaises(RuntimeError):
@@ -138,7 +137,6 @@ class TempCleanupTests(unittest.TestCase):
                               self.work, gdal, osr, None)
         self.assertEqual(self._staged_leftovers(), [])
 
-    @unittest.expectedFailure
     def test_limit_exceeded_removes_staged_copies(self):
         with self.assertRaises(ValueError):
             points_to_rasters(self._cfg(input_type='lidar', inputs=[self.las_unicode],
@@ -146,7 +144,6 @@ class TempCleanupTests(unittest.TestCase):
                               self.work, gdal, osr, None)
         self.assertEqual(self._staged_leftovers(), [])
 
-    @unittest.expectedFailure
     def test_cancel_removes_buffer_raster(self):
         os.environ['FAKE_PDAL_READY'] = str(self.ready)
         os.environ['FAKE_PDAL_SLEEP'] = '20'
@@ -155,7 +152,6 @@ class TempCleanupTests(unittest.TestCase):
                               self.work, gdal, osr, _Feedback(self.ready))
         self.assertEqual(self._buffer_leftovers(), [])
 
-    @unittest.expectedFailure
     def test_pipeline_failure_removes_large_buffer(self):
         os.environ['FAKE_PDAL_FAIL'] = '1'
         with self.assertRaises(RuntimeError):

@@ -89,7 +89,7 @@ def stage_unicode_source(path,work,number,feedback=None):
     return str(destination),destination,method
 
 
-def inspect_sources(c,work,exe,osr,feedback):
+def inspect_sources(c,work,exe,osr,feedback,staged_out=None):
     target=crs_of(c['target_crs'],osr);records=[];staged=[]
     for number,path in enumerate(c['inputs']):
         say(feedback,'Selected point input: '+path)
@@ -109,6 +109,7 @@ def inspect_sources(c,work,exe,osr,feedback):
             read_path,staged_path,stage_method=stage_unicode_source(path,work,number,feedback)
             if staged_path is not None:
                 staged.append(staged_path)
+                if staged_out is not None:staged_out.append(staged_path)
                 say(feedback,'PDAL ASCII input: '+read_path)
             data=run_process(exe,['info','--summary',read_path],work/f'info_{number:06d}.json',feedback,True)
             summary=data.get('summary',{})
@@ -171,8 +172,7 @@ def build_pipeline(records,bounds,c,destination,classified_path=None):
     return {'pipeline':pipeline},halo
 
 
-def points_to_rasters(c,work,gdal,osr,feedback=None):
-    exe=executable(c)
+def _points_to_rasters(c,work,gdal,osr,feedback,exe,staged):
     run_process(exe,['--version'],work/'pdal_version.txt',feedback)
     version=(work/'pdal_version.txt').read_text(errors='replace')
     match=re.search(r'\b(\d+)\.(\d+)\.(\d+)\b',version)
@@ -180,7 +180,7 @@ def points_to_rasters(c,work,gdal,osr,feedback=None):
         raise ValueError('PDAL >=2.9 is required for point processing')
     # c['inputs'] is the validated QGIS selection.  Do not consult a config
     # file, remembered path or test default at any point in point processing.
-    records,staged=inspect_sources(c,work,exe,osr,feedback)
+    records,_returned_staged=inspect_sources(c,work,exe,osr,feedback,staged)
     (work/'point_sources.json').write_text(json.dumps(records,ensure_ascii=False,indent=2),encoding='utf-8')
     cell=c['cell_size'];size=c['point_tile_size'];span=cell*size
     indices=set()
@@ -198,7 +198,7 @@ def points_to_rasters(c,work,gdal,osr,feedback=None):
     buffer=(math.ceil((c['point_radius']+(2*c['smrf_window'] if auto else 0))/cell)+2)*cell
     if (size+2*math.ceil(buffer/cell))**2>c['max_input_pixels']:
         raise ValueError('Buffered point block exceeds max_input_pixels')
-    outputs=[];empty=0
+    outputs=[];empty=0;pending_buffer=None
     try:
       for i,(ix,iy) in enumerate(sorted(indices)):
         cancelled(feedback)
@@ -206,6 +206,7 @@ def points_to_rasters(c,work,gdal,osr,feedback=None):
         expanded=(bounds[0]-buffer,bounds[1]-buffer,bounds[2]+buffer,bounds[3]+buffer)
         selected=[r for r in records if overlap(r['bounds'],expanded)]
         name=f'block_{i:06d}';bufferfile=work/f'{name}_buffer.tif'
+        pending_buffer=bufferfile
         classified=work/f'{name}_classified.laz' if auto else None
         pipeline,halo=build_pipeline(selected,bounds,c,bufferfile,classified)
         if auto:
@@ -253,8 +254,15 @@ def points_to_rasters(c,work,gdal,osr,feedback=None):
         else:empty+=1
         ds=None
         # Reproducible transient raster; classified LAZ, pipelines and logs remain.
-        bufferfile.unlink()
+        bufferfile.unlink();pending_buffer=None
         if auto:cutfile.unlink()
+    except BaseException:
+        # M-1: a failed/cancelled block must not leave its large buffered
+        # raster behind. Cleanup errors never mask the original failure.
+        if pending_buffer is not None:
+            try:pending_buffer.unlink()
+            except OSError:pass
+        raise
     finally:
         for path in staged:
             try:path.unlink()
@@ -267,3 +275,25 @@ def points_to_rasters(c,work,gdal,osr,feedback=None):
         classification_mode=c['lidar_mode'] if c['input_type']=='lidar' else 'text_ground_points',
         interpolation=c['point_method'],radius_m=c['point_radius'],fallback_fill=False,
         note='Auto-classified LAZ blocks contain overlapping buffers; inspect before use. Original point files are unchanged.')
+
+
+def points_to_rasters(c,work,gdal,osr,feedback=None):
+    """Point inputs -> DEM block rasters via PDAL.
+
+    The ASCII-staged copies of Unicode-named inputs are removed on every
+    exit path (success, failure, cancellation, limit rejection), including
+    failures raised before the block loop is reached. Diagnostic logs and
+    JSON records are kept.
+    """
+    exe=executable(c)
+    staged=[]
+    try:
+        return _points_to_rasters(c,work,gdal,osr,feedback,exe,staged)
+    finally:
+        for path in staged:
+            try:path.unlink()
+            except FileNotFoundError:pass
+        stage_dir=Path(work)/'pdal_ascii_inputs'
+        if stage_dir.is_dir():
+            try:stage_dir.rmdir()
+            except OSError:pass
