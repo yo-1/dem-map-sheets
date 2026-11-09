@@ -49,7 +49,9 @@ class DEMMapSheetsAlgorithm(QgsProcessingAlgorithm):
             behavior=QgsProcessingParameterFile.Folder, optional=True))
         self.addParameter(QgsProcessingParameterBoolean('RECURSIVE','サブフォルダーも検索する',True))
         self.addParameter(QgsProcessingParameterCrs('INPUT_CRS','入力CRS（テキスト・LEM・非GeoTIFFでは必須）',optional=True))
-        self.addParameter(QgsProcessingParameterCrs('CRS','出力の平面直角座標系',optional=False))
+        output_crs = QgsProcessingParameterCrs('CRS','出力の平面直角座標系',optional=False)
+        output_crs.setHelp('必須です。出力の平面直角座標系（例：EPSG:6677）を選択してください。未設定では処理を開始できません。')
+        self.addParameter(output_crs)
         self.addParameter(QgsProcessingParameterNumber('CELL','出力セルサイズ（m）',
             QgsProcessingParameterNumber.Double,1.0,minValue=0.01,maxValue=100.0))
         self.addParameter(QgsProcessingParameterEnum('VERTICAL_MODE','入力標高の基準（記録用・変換は行いません）',
