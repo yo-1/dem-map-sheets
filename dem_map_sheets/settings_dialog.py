@@ -1,7 +1,7 @@
 """Processing dialog with reusable JSON settings. GPL-3.0-only."""
 from qgis.PyQt.QtCore import QVariant
 from qgis.PyQt.QtWidgets import QDialogButtonBox, QFileDialog, QMessageBox
-from qgis.core import QgsCoordinateReferenceSystem, QgsProperty
+from qgis.core import QgsCoordinateReferenceSystem, QgsProcessingParameterCrs, QgsProperty
 from qgis.gui import QgsProcessingParametersGenerator
 from processing.gui.AlgorithmDialog import AlgorithmDialog
 from .profiles import save_profile, load_profile, missing_inputs
@@ -60,9 +60,21 @@ class SettingsDialog(AlgorithmDialog):
                 # though CRS is mandatory when processing starts. Preserve
                 # the blank widget state here; processAlgorithm() remains
                 # responsible for rejecting execution without a valid CRS.
-                if key == 'CRS' and value in (None, ''):
-                    continue
-                if not self.algorithm().parameterDefinition(key).checkValueIsAcceptable(value, context):
+                definition = self.algorithm().parameterDefinition(key)
+                if isinstance(definition, QgsProcessingParameterCrs):
+                    # A blank CRS is a valid *saved* dialog state. Nonblank
+                    # CRS values must resolve before any widgets are changed.
+                    if value is None or value == '':
+                        continue
+                    if not isinstance(value, str):
+                        raise ValueError('設定値が不正です: ' + key)
+                    crs = QgsCoordinateReferenceSystem.fromUserInput(value)
+                    if not crs.isValid():
+                        raise ValueError(
+                            f'設定ファイルの {key} をこのPCで解釈できません: {value!r}。'
+                            '読み込みを中止しました。現在の設定は変更されていません。'
+                            '有効なEPSGコードまたはWKTを指定してください。')
+                if not definition.checkValueIsAcceptable(value, context):
                     raise ValueError('設定値が不正です: ' + key)
             self.setParameters(values)
             missing = missing_inputs(values)
