@@ -1,4 +1,5 @@
 """Processing dialog with reusable JSON settings. GPL-3.0-only."""
+from qgis.PyQt.QtCore import QVariant
 from qgis.PyQt.QtWidgets import QDialogButtonBox, QFileDialog, QMessageBox
 from qgis.core import QgsCoordinateReferenceSystem, QgsProperty
 from qgis.gui import QgsProcessingParametersGenerator
@@ -6,6 +7,8 @@ from processing.gui.AlgorithmDialog import AlgorithmDialog
 from .profiles import save_profile, load_profile, missing_inputs
 
 def portable(value):
+    if isinstance(value, QVariant):
+        return None if value.isNull() else portable(value.value())
     if isinstance(value, QgsCoordinateReferenceSystem):
         return (value.authid() or value.toWkt()) if value.isValid() else ''
     if isinstance(value, QgsProperty):
