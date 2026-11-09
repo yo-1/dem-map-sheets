@@ -336,6 +336,8 @@ def run(config,output_dir,gdal,osr,feedback=None):
     # KD-2: validate_input existed but was never called; configuration
     # inconsistencies now fail here with a clear error, before any
     # directory is created or GDAL is invoked (also covers KD-1).
+    for key in ('cell_size','target_crs','max_pixels'):
+        if key not in c: raise ValueError(key+' is required')
     validate_input(c)
     out=Path(output_dir);out.mkdir(parents=True,exist_ok=False)
     work=out/'work';source_dir=out/'01_source_dem';source_dir.mkdir()

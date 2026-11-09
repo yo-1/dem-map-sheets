@@ -148,14 +148,18 @@ def _scan_directory(directory, recursive, extensions, feedback=None):
 def validate_input(c):
     if c['input_type'] not in EXTENSIONS:
         raise ValueError('input_type: raster, gsi, text, lidar or forest')
-    # KD-1/KD-2: these were not covered before; an invalid cell_size
-    # reached GDAL and could hang or abort the host process.
-    if isinstance(c['cell_size'],bool) or not isinstance(c['cell_size'],(int,float)) \
-            or not math.isfinite(c['cell_size']) or c['cell_size']<=0:
+    # KD-1/KD-2: pipeline-level keys, validated when present (they
+    # are not part of the input-side defaults; run() requires them).
+    # An invalid cell_size previously reached GDAL unchecked and
+    # could hang or abort the host process.
+    if 'cell_size' in c and (isinstance(c['cell_size'],bool)
+            or not isinstance(c['cell_size'],(int,float))
+            or not math.isfinite(c['cell_size']) or c['cell_size']<=0):
         raise ValueError('cell_size must be finite and positive')
-    if not isinstance(c['target_crs'],str) or not c['target_crs'].strip():
+    if 'target_crs' in c and (not isinstance(c['target_crs'],str)
+            or not c['target_crs'].strip()):
         raise ValueError('target_crs is required')
-    if type(c['max_pixels']) is not int or c['max_pixels']<1:
+    if 'max_pixels' in c and (type(c['max_pixels']) is not int or c['max_pixels']<1):
         raise ValueError('max_pixels must be a positive integer')
     for key in ('recursive','normalize_rasters'):
         if type(c[key]) is not bool: raise ValueError(key+' must be boolean')
