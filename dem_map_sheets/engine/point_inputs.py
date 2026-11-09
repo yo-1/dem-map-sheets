@@ -71,6 +71,40 @@ def transform_bounds(bounds,source,target,osr):
     return tuple(b)
 
 
+def _ascii_temp_area():
+    """Create a temporary ASCII directory for PDAL-facing files.
+
+    Candidates, in order: the system temp area, $DEM_MAP_SHEETS_TEMP,
+    and on Windows the conventional ASCII locations C:\\Temp and
+    %ProgramData%\\DEMMapSheets (relevant when the user profile -
+    and therefore TEMP - itself contains non-ASCII characters).
+    Returns the first creatable ASCII directory; if none exists,
+    returns a non-ASCII one and the staging check raises its clear
+    bilingual error.
+    """
+    import tempfile
+    candidates=[None]
+    env_dir=os.environ.get('DEM_MAP_SHEETS_TEMP')
+    if env_dir:candidates.append(env_dir)
+    if os.name=='nt':
+        candidates.append(r'C:\Temp')
+        candidates.append(str(Path(os.environ.get('ProgramData',r'C:\ProgramData'))/'DEMMapSheets'))
+    created=[]
+    for base in candidates:
+        try:
+            if base is not None:Path(base).mkdir(parents=True,exist_ok=True)
+            area=Path(tempfile.mkdtemp(prefix='dem_map_sheets_pdal_',dir=base))
+        except OSError:
+            continue
+        if str(area).isascii():
+            for extra in created:shutil.rmtree(extra,ignore_errors=True)
+            return area
+        created.append(area)
+    for extra in created[1:]:shutil.rmtree(extra,ignore_errors=True)
+    if created:return created[0]
+    return Path(tempfile.mkdtemp(prefix='dem_map_sheets_pdal_'))
+
+
 def stage_unicode_source(path,work,number,feedback=None):
     # 'work' here is the PDAL-facing area chosen by points_to_rasters:
     # the run work dir when it is ASCII, otherwise a temporary ASCII
@@ -300,11 +334,10 @@ def points_to_rasters(c,work,gdal,osr,feedback=None):
     exit. Only the finished block GeoTIFFs are written to the work dir
     (by GDAL), so a non-ASCII output folder no longer blocks PDAL.
     """
-    import tempfile
     exe=executable(c)
     staged=[]
     ascii_work=str(work).isascii()
-    pdal_root=Path(work) if ascii_work else Path(tempfile.mkdtemp(prefix='dem_map_sheets_pdal_'))
+    pdal_root=Path(work) if ascii_work else _ascii_temp_area()
     try:
         return _points_to_rasters(c,work,gdal,osr,feedback,exe,staged,pdal_root)
     finally:
@@ -316,4 +349,14 @@ def points_to_rasters(c,work,gdal,osr,feedback=None):
             try:stage_dir.rmdir()
             except OSError:pass
         if not ascii_work:
+            # keep_work parity: before this area existed, the PDAL
+            # diagnostics (pipeline JSONs, subset/classified LAS,
+            # buffer rasters) lived in the work dir and survived with
+            # keep_work. Mirror them back so the setting still means
+            # the same thing with a non-ASCII output folder.
+            if c.get('keep_work'):
+                mirror=Path(work)/'pdal_ascii_area'
+                try:
+                    shutil.copytree(pdal_root,mirror,dirs_exist_ok=True)
+                except OSError:pass
             shutil.rmtree(pdal_root,ignore_errors=True)
