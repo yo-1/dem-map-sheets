@@ -91,6 +91,30 @@ def check_settings():
                 require(not any(m['kind'] == 'warning' for m in messages), messages)
             check('save_load_real_widgets', roundtrip)
 
+            def unset_crs_roundtrip():
+                # A blank required CRS is a valid saved dialog state. It must
+                # round-trip through JSON, while the algorithm still rejects
+                # execution until the user selects a CRS.
+                blank_profile = root / 'settings_unset_crs.json'
+                blank_params = {**params, 'CRS': ''}
+                dialog.setParameters(blank_params)
+                with patch.object(QFileDialog, 'getSaveFileName', return_value=(str(blank_profile), 'JSON')):
+                    dialog.profile_buttons[0].click()
+                require(blank_profile.is_file(), 'Blank-CRS profile was not saved')
+                saved = json.loads(blank_profile.read_text(encoding='utf-8'))
+                require(saved['parameters'].get('CRS') == '', saved)
+                dialog.setParameters(params)
+                before = len(messages)
+                with patch.object(QFileDialog, 'getOpenFileName', return_value=(str(blank_profile), 'JSON')):
+                    dialog.profile_buttons[1].click()
+                current = portable(dialog.mainWidget().createProcessingParameters(
+                    QgsProcessingParametersGenerator.Flag.SkipValidation))
+                require(current.get('CRS') == '', current)
+                require(not any(m['kind'] == 'warning' for m in messages[before:]), messages[before:])
+                require(not algorithm.parameterDefinition('CRS').checkValueIsAcceptable('', dialog.mainWidget().processing_context),
+                        'Unset CRS must remain invalid for processing')
+            check('unset_crs_save_load_roundtrip', unset_crs_roundtrip)
+
             def missing():
                 require(profile.exists(), 'Roundtrip must pass first')
                 source.unlink(missing_ok=True)
