@@ -1,7 +1,7 @@
 """Print CRS identity evidence for the GDAL/PROJ version in use.
 
 Run in each CI job so the EPSG dataset behaviour (notably the
-EPSG:6668 JGD2011 -> JGD2024 redefinition) is on record per version.
+EPSG:6668 JGD2011 -> JGD2024 relabelling) is on record per version.
 """
 import re
 

@@ -622,6 +622,16 @@ class GsiEndToEndTests(GdalCase):
         with self.assertRaisesRegex(ValueError, 'datum labels are mixed'):
             self.prepare('gsi', [a, b], **self.gsi_config())
 
+    def test_crs_alias_note_states_name_change_only(self):
+        # r6: the note must separate the horizontal CRS relabelling
+        # (name change only, coordinates unchanged) from the
+        # vertical realization, which this mapping does not convert.
+        path = self.xml('new.xml', srs='fguuid:jgd2024.bl')
+        _prepared, report, _work = self.prepare('gsi', [path], **self.gsi_config())
+        note = report.get('crs_alias_note', '')
+        self.assertIn('name change only', note)
+        self.assertIn('vertical', note)
+
     def test_adjacent_sheets_are_mosaicked_by_run(self):
         a = self.xml('a.xml')
         b = self.xml('b.xml', lower='35.0 139.1', upper='35.1 139.2', tuples='x,1\nx,2\nx,3\nx,4')

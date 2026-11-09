@@ -536,15 +536,19 @@ def prepare_inputs(c,work,gdal,osr,feedback=None):
                 outputs=normalize_gsi_groups(outputs,work,c,gdal,osr,feedback)
         if any(isinstance(s,dict) and str(s.get('original_srs','')).lower() in
                ('fguuid:jgd2011.bl','fguuid:jgd2024.bl') for s in report['sources']):
-            # r5: EPSG:6668 itself was redefined between EPSG dataset
-            # versions (JGD2011 -> JGD2024, datum EPSG:1128), so which
-            # realization this alias denotes depends on the GDAL/PROJ
-            # version in use; the mapping is an approximation either
-            # way and must not be treated as exact identity.
+            # r6: newer EPSG datasets label this horizontal CRS
+            # JGD2024 instead of JGD2011. That is a name change only:
+            # the CRS definition and the coordinate values are
+            # unchanged (verified: WKT numeric structure and PROJ
+            # transformation results are identical across dataset
+            # versions). The vertical realization of the elevation
+            # data is a separate matter (see README) and is not
+            # converted by this mapping.
             report['crs_alias_note']=('GSI files declaring fguuid:jgd2011.bl or fguuid:jgd2024.bl are '
-                'treated as EPSG:6668. The EPSG dataset redefined code 6668 from JGD2011 to JGD2024, '
-                'so the realization it denotes depends on the EPSG dataset version bundled with PROJ; positions may differ '
-                'at the centimetre level (approximation, not identity).')
+                'treated as EPSG:6668. Newer EPSG datasets label this horizontal CRS JGD2024 instead '
+                'of JGD2011; that is a name change only - the CRS definition and coordinate values '
+                'are unchanged. The vertical (elevation) realization of the source data is a '
+                'separate matter and is not converted by this mapping.')
         if not outputs:
             ignored=report.get('ignored') or []
             if ignored:
