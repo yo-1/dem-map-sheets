@@ -72,6 +72,9 @@ def transform_bounds(bounds,source,target,osr):
 
 
 def stage_unicode_source(path,work,number,feedback=None):
+    # 'work' here is the PDAL-facing area chosen by points_to_rasters:
+    # the run work dir when it is ASCII, otherwise a temporary ASCII
+    # directory, so a non-ASCII OUTPUT folder no longer blocks PDAL.
     """Return an ASCII-only PDAL path for a Unicode-named LAS/LAZ source.
 
     Some Windows PDAL builds still pass reader filenames through the active
@@ -82,7 +85,7 @@ def stage_unicode_source(path,work,number,feedback=None):
     if str(source).isascii():return str(source),None,None
     stage=Path(work)/'pdal_ascii_inputs'
     if not str(stage.resolve()).isascii():
-        raise ValueError('PDAL cannot read the Unicode input path and the output work path also contains non-ASCII characters. Choose an ASCII-only output folder such as C:\\gis_data\\output.')
+        raise ValueError('PDAL cannot read the Unicode input path and no ASCII work area is available (the system temporary folder also contains non-ASCII characters). Choose an ASCII-only output folder such as C:\\gis_data\\output.（PDALが使える作業領域を確保できません。出力先にはASCIIのみのフォルダーを指定してください）')
     stage.mkdir(parents=True,exist_ok=True)
     destination=stage/f'input_{number:06d}{source.suffix.lower()}'
     if destination.exists():destination.unlink()
@@ -94,12 +97,13 @@ def stage_unicode_source(path,work,number,feedback=None):
     return str(destination),destination,method
 
 
-def inspect_sources(c,work,exe,osr,feedback,staged_out=None):
+def inspect_sources(c,work,exe,osr,feedback,staged_out=None,pdal_root=None):
+    if pdal_root is None:pdal_root=work
     target=crs_of(c['target_crs'],osr);records=[];staged=[]
     for number,path in enumerate(c['inputs']):
         say(feedback,'Selected point input: '+path)
         if c['input_type']=='text':
-            cleaned=work/f'points_{number:06d}.csv';count=0
+            cleaned=pdal_root/f'points_{number:06d}.csv';count=0
             xmin=ymin=math.inf;xmax=ymax=-math.inf
             with cleaned.open('w',encoding='ascii',newline='') as f:
                 f.write('X,Y,Z\n')
@@ -111,7 +115,7 @@ def inspect_sources(c,work,exe,osr,feedback,staged_out=None):
             bounds=(xmin,ymin,xmax,ymax)
             record=dict(path=path,read_path=str(cleaned),reader='readers.text',count=count)
         else:
-            read_path,staged_path,stage_method=stage_unicode_source(path,work,number,feedback)
+            read_path,staged_path,stage_method=stage_unicode_source(path,pdal_root,number,feedback)
             if staged_path is not None:
                 staged.append(staged_path)
                 if staged_out is not None:staged_out.append(staged_path)
@@ -177,7 +181,7 @@ def build_pipeline(records,bounds,c,destination,classified_path=None):
     return {'pipeline':pipeline},halo
 
 
-def _points_to_rasters(c,work,gdal,osr,feedback,exe,staged):
+def _points_to_rasters(c,work,gdal,osr,feedback,exe,staged,pdal_root):
     run_process(exe,['--version'],work/'pdal_version.txt',feedback)
     version=(work/'pdal_version.txt').read_text(errors='replace')
     match=re.search(r'\b(\d+)\.(\d+)\.(\d+)\b',version)
@@ -185,7 +189,7 @@ def _points_to_rasters(c,work,gdal,osr,feedback,exe,staged):
         raise ValueError('PDAL >=2.9 is required for point processing')
     # c['inputs'] is the validated QGIS selection.  Do not consult a config
     # file, remembered path or test default at any point in point processing.
-    records,_returned_staged=inspect_sources(c,work,exe,osr,feedback,staged)
+    records,_returned_staged=inspect_sources(c,work,exe,osr,feedback,staged,pdal_root=pdal_root)
     (work/'point_sources.json').write_text(json.dumps(records,ensure_ascii=False,indent=2),encoding='utf-8')
     cell=c['cell_size'];size=c['point_tile_size'];span=cell*size
     indices=set()
@@ -210,21 +214,21 @@ def _points_to_rasters(c,work,gdal,osr,feedback,exe,staged):
         bounds=(ix*span,iy*span,(ix+1)*span,(iy+1)*span)
         expanded=(bounds[0]-buffer,bounds[1]-buffer,bounds[2]+buffer,bounds[3]+buffer)
         selected=[r for r in records if overlap(r['bounds'],expanded)]
-        name=f'block_{i:06d}';bufferfile=work/f'{name}_buffer.tif'
+        name=f'block_{i:06d}';bufferfile=pdal_root/f'{name}_buffer.tif'
         pending_buffer=bufferfile
-        classified=work/f'{name}_classified.laz' if auto else None
+        classified=pdal_root/f'{name}_classified.laz' if auto else None
         pipeline,halo=build_pipeline(selected,bounds,c,bufferfile,classified)
         if auto:
             # Stream the buffered subset to disk before running non-streaming SMRF.
             # This bounds memory by local point count, not original file sizes.
-            cutfile=work/f'{name}_subset.laz'
+            cutfile=pdal_root/f'{name}_subset.laz'
             merge_index=next(j for j,stage in enumerate(pipeline['pipeline']) if stage['type']=='filters.merge')
             branches=pipeline['pipeline'][:merge_index]
             inputs=pipeline['pipeline'][merge_index]['inputs']
             extract={'pipeline':branches+[dict(type='writers.las',filename=str(cutfile),inputs=inputs,
                 minor_version=4,dataformat_id=6,scale_x=.001,scale_y=.001,scale_z=.001,
                 offset_x='auto',offset_y='auto',offset_z='auto')]}
-            extractpath=work/f'{name}_subset_pipeline.json'
+            extractpath=pdal_root/f'{name}_subset_pipeline.json'
             extractpath.write_text(json.dumps(extract,ensure_ascii=False,indent=2),encoding='utf-8')
             say(feedback,f'Extracting buffered point subset {i+1}/{len(indices)}')
             run_process(exe,['pipeline',str(extractpath),'--stream'],work/f'{name}_subset.log',feedback)
@@ -236,7 +240,7 @@ def _points_to_rasters(c,work,gdal,osr,feedback,exe,staged):
                 raise ValueError('Buffered subset exceeds max_points_auto. Reduce point_tile_size or increase the limit according to available memory. Subset LAZ has been retained.')
             rest=pipeline['pipeline'][merge_index+1:]
             pipeline={'pipeline':[dict(type='readers.las',filename=str(cutfile),override_srs=c['target_crs'],tag='MERGED')]+rest}
-        pipelinefile=work/f'{name}_pipeline.json'
+        pipelinefile=pdal_root/f'{name}_pipeline.json'
         pipelinefile.write_text(json.dumps(pipeline,ensure_ascii=False,indent=2),encoding='utf-8')
         say(feedback,f'Point DEM block {i+1}/{len(indices)}; sources={len(selected)}')
         args=['pipeline',str(pipelinefile)]
@@ -289,16 +293,27 @@ def points_to_rasters(c,work,gdal,osr,feedback=None):
     exit path (success, failure, cancellation, limit rejection), including
     failures raised before the block loop is reached. Diagnostic logs and
     JSON records are kept.
+
+    PDAL-facing files (staged inputs, pipeline JSONs, intermediate LAS
+    and buffer rasters) live in an ASCII area: the work dir itself when
+    it is ASCII, otherwise a temporary directory that is removed on
+    exit. Only the finished block GeoTIFFs are written to the work dir
+    (by GDAL), so a non-ASCII output folder no longer blocks PDAL.
     """
+    import tempfile
     exe=executable(c)
     staged=[]
+    ascii_work=str(work).isascii()
+    pdal_root=Path(work) if ascii_work else Path(tempfile.mkdtemp(prefix='dem_map_sheets_pdal_'))
     try:
-        return _points_to_rasters(c,work,gdal,osr,feedback,exe,staged)
+        return _points_to_rasters(c,work,gdal,osr,feedback,exe,staged,pdal_root)
     finally:
         for path in staged:
             try:path.unlink()
             except OSError:pass
-        stage_dir=Path(work)/'pdal_ascii_inputs'
+        stage_dir=pdal_root/'pdal_ascii_inputs'
         if stage_dir.is_dir():
             try:stage_dir.rmdir()
             except OSError:pass
+        if not ascii_work:
+            shutil.rmtree(pdal_root,ignore_errors=True)

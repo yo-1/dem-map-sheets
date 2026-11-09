@@ -180,3 +180,37 @@ class RealPdalTests(unittest.TestCase):
 
 if __name__ == '__main__':
     unittest.main()
+
+
+@unittest.skipUnless(PDAL, 'REAL_PDAL_PATH is not set')
+class RealPdalJapaneseOutputTests(unittest.TestCase):
+    """End-to-end: a non-ASCII (Japanese) output folder must not block
+    PDAL. The run work dir lives under the output, so this exercises
+    the temporary ASCII PDAL area with the real binary."""
+
+    def test_run_with_japanese_output_dir(self):
+        import glob
+        from dem_map_sheets.engine.dem_pipeline import run
+
+        with tempfile.TemporaryDirectory() as td:
+            root = Path(td)
+            csv = root / 'points.csv'
+            rows = ['X,Y,Z,Classification']
+            for y in (0, 10, 20, 30):
+                for x in (0, 10, 20, 30):
+                    rows.append(f'{x},{y},{100 + x // 10 + y // 10},2')
+            csv.write_text('\n'.join(rows) + '\n', encoding='utf-8')
+            las = root / 'points.las'
+            _make_las(PDAL, csv, las)
+            before = set(glob.glob(str(Path(tempfile.gettempdir()) / 'dem_map_sheets_pdal_*')))
+            out = root / '日本語の出力先' / 'demmap_result'
+            c = dict(DEFAULTS)
+            c.update(input_type='lidar', inputs=[str(las)], input_crs='EPSG:6677',
+                     target_crs='EPSG:6677', cell_size=10.0, lidar_mode='classified',
+                     ground_classes=[2], pdal_path=PDAL, point_radius=15.0, max_pixels=10 ** 9)
+            manifest = run(c, out, gdal, osr, None)
+            self.assertEqual(manifest['status'], 'completed')
+            self.assertTrue(Path(manifest['merged_dem']).is_file())
+            self.assertTrue(str(manifest['merged_dem']).isascii() is False)
+            after = set(glob.glob(str(Path(tempfile.gettempdir()) / 'dem_map_sheets_pdal_*')))
+            self.assertEqual(after - before, set(), 'temporary PDAL area leaked')
