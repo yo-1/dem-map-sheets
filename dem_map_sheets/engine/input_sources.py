@@ -432,9 +432,13 @@ def prepare_inputs(c,work,gdal,osr,feedback=None):
                         count=text_grid(path,raw,source,gdal,osr,feedback)
                     except ValueError as exc:
                         # M-3: an unusable input is skipped with a user-visible
-                        # warning, not silently. Other inputs continue.
+                        # warning, not silently. Other inputs continue. The
+                        # first 20 are warned individually; the rest are
+                        # summarised after the loop. report['ignored'] and
+                        # input_report.json always keep every record.
                         report['ignored'].append({'path':str(path),'reason':str(exc)})
-                        if feedback is not None:feedback.pushWarning(f'入力を無視: {path} ({exc})')
+                        if feedback is not None and len(report['ignored'])<=20:
+                            feedback.pushWarning(f'入力を無視: {path} ({exc})')
                         ordinal-=1;continue
                     report['detected'].append({'path':str(path),'kind':'xyz_grid','points':count,
                                                'grid_cell':grid_cell,**detected})
@@ -451,6 +455,8 @@ def prepare_inputs(c,work,gdal,osr,feedback=None):
                 aligned=work/f'aligned_{ordinal:06d}.tif'
                 outputs.append(normalize(raw,aligned,source,gdal,osr,feedback,kind=='raster'))
                 report['sources'].append({'path':str(path),'kind':kind});save()
+            if len(report['ignored'])>20 and feedback is not None:
+                feedback.pushWarning(f"入力を無視: ほか {len(report['ignored'])-20} 件（詳細は input_report.json を参照）")
         else:
             gsi_datums=set()
             for path in c['inputs']:

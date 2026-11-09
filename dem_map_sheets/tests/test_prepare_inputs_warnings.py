@@ -72,6 +72,25 @@ class ForestIgnoredWarningTests(unittest.TestCase):
         self.assertEqual(len(report['ignored']), 1)
         self.assertEqual(len(feedback.warnings), 1)
 
+    def test_warnings_capped_at_20_with_summary(self):
+        import json
+        bads = []
+        for i in range(25):
+            bad = self.dir / f'bad{i:02d}.csv'
+            bad.write_text('name,note\nfoo,bar\n', encoding='utf-8')
+            bads.append(str(bad))
+        feedback = _Feedback()
+        work = self.dir / 'work_cap'
+        prepared, report = prepare_inputs(self._cfg(bads + [self.good]),
+                                          work, gdal, osr, feedback)
+        self.assertEqual(len(prepared['inputs']), 1)
+        # every ignored input is recorded; only the warnings are capped
+        self.assertEqual(len(report['ignored']), 25)
+        saved = json.loads((work / 'input_report.json').read_text(encoding='utf-8'))
+        self.assertEqual(len(saved['ignored']), 25)
+        self.assertEqual(len(feedback.warnings), 21)
+        self.assertIn('ほか 5 件', feedback.warnings[-1])
+
     def test_all_inputs_invalid_stops_with_error(self):
         feedback = _Feedback()
         with self.assertRaises(ValueError):
