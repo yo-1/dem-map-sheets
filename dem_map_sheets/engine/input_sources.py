@@ -252,7 +252,11 @@ def discover(inputs, base_dir, c, feedback=None):
 
 def crs_of(value, osr):
     crs=osr.SpatialReference()
-    if not value or crs.SetFromUserInput(value)!=0:raise ValueError('Invalid/missing input CRS: '+value)
+    # GDAL builds differ: SetFromUserInput returns a code on some
+    # builds and raises on others (exception-enabled bindings).
+    try: rc=crs.SetFromUserInput(value) if value else 1
+    except Exception as exc: raise ValueError('Invalid/missing input CRS: '+str(value)) from exc
+    if rc!=0:raise ValueError('Invalid/missing input CRS: '+value)
     if crs.IsCompound() or crs.GetAxesCount()!=2:
         raise ValueError('Use an explicit two-dimensional horizontal CRS; heights are preserved without vertical conversion')
     crs.SetAxisMappingStrategy(osr.OAMS_TRADITIONAL_GIS_ORDER)
