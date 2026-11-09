@@ -42,7 +42,7 @@ class ProfileTests(unittest.TestCase):
     def test_invalid_utf8_error_is_japanese(self):
         with tempfile.TemporaryDirectory() as d:
             p = Path(d) / 'broken.json'
-            p.write_bytes(b'\\xff\\xfe')
+            p.write_bytes(bytes([0xff, 0xfe]))
             with self.assertRaisesRegex(ValueError, 'UTF-8で読み取れません'):
                 load_profile(p, ['CRS'])
 
