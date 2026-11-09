@@ -26,21 +26,49 @@ def traversal_indices(lo, hi, start, order):
         low, high = limits[axis]
         increasing = (sign == '+') if axis == 'x' else (sign == '-')
         ranges[axis] = range(low, high+1) if increasing else range(high, low-1, -1)
-    coords=[]; fast, slow = axes[0][0], axes[1][0]
-    for slow_value in ranges[slow]:
-        for fast_value in ranges[fast]:
-            point={'x':0,'y':0}; point[slow]=slow_value; point[fast]=fast_value
-            coords.append((point['x'],point['y']))
-    try: return iter(coords[coords.index(tuple(start)):])
+    fast, slow = axes[0][0], axes[1][0]
+    # R-9: locate the start point arithmetically and generate lazily.
+    # The previous implementation materialised all w*h coordinate tuples
+    # (gigabytes at the max_pixels ceiling) just to slice from the start.
+    def _position(axis):
+        value=start[0] if axis=='x' else start[1]
+        return ranges[axis].index(value)  # range.index is O(1)
+    try: fast_pos,slow_pos=_position(fast),_position(slow)
     except ValueError as exc: raise ValueError('GSI startPoint outside grid traversal') from exc
+    fast_values,slow_values=ranges[fast],ranges[slow]
+    def _generate():
+        for s_i in range(slow_pos,len(slow_values)):
+            f_start=fast_pos if s_i==slow_pos else 0
+            for f_i in range(f_start,len(fast_values)):
+                point={'x':0,'y':0}; point[slow]=slow_values[s_i]; point[fast]=fast_values[f_i]
+                yield (point['x'],point['y'])
+    return _generate()
+
+
+# R-8: only encodings that cannot smuggle a DTD past the byte-level
+# check are accepted. UTF-16/32 are rejected outright: their byte
+# patterns hide '<!DOCTYPE' from an ASCII search (review finding G-1).
+_GSI_ENCODINGS = {'utf-8', 'utf-8-sig', 'shift_jis', 'shift-jis',
+                  'euc-jp', 'iso-8859-1', 'ascii', 'us-ascii'}
 
 
 def parse_dem(data, max_pixels=25000000, source_override='', feedback=None):
-    if len(data) > 256*1024*1024 or b'<!DOCTYPE' in data.upper() or b'<!ENTITY' in data.upper():
+    if len(data) > 256*1024*1024:
         raise ValueError('GSI XML too large or contains a DTD/entity declaration')
     declaration = re.search(br'encoding=[\"\x27]([^\"\x27]+)', data[:200], re.I)
     encoding = declaration.group(1).decode('ascii') if declaration else 'utf-8-sig'
-    text = data.decode(encoding)
+    if encoding.lower() not in _GSI_ENCODINGS:
+        raise ValueError('Unsupported GSI XML encoding: ' + encoding)
+    try:
+        text = data.decode(encoding)
+    except (LookupError, UnicodeDecodeError) as exc:
+        raise ValueError('GSI XML cannot be decoded as ' + encoding) from exc
+    if '\x00' in text:
+        raise ValueError('GSI XML cannot be decoded as ' + encoding)
+    # The DTD check runs on the decoded text with exact case (XML is
+    # case-sensitive); the previous data.upper() byte copies are gone.
+    if '<!DOCTYPE' in text or '<!ENTITY' in text:
+        raise ValueError('GSI XML too large or contains a DTD/entity declaration')
     text = re.sub(r'encoding=[\"\x27][^\"\x27]+[\"\x27]', 'encoding="UTF-8"', text, count=1, flags=re.I)
     root = ET.fromstring(text)
     dems = [e for e in root.iter() if local(e.tag) == 'DEM']
