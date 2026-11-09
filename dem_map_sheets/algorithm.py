@@ -8,7 +8,7 @@ from qgis.core import (
     QgsProcessingParameterMultipleLayers, QgsProcessingParameterCrs,
     QgsProcessingParameterNumber, QgsProcessingParameterEnum,
     QgsProcessingParameterBoolean, QgsProcessingParameterFolderDestination,
-    QgsProcessingParameterFile, QgsProcessingParameterString,
+    QgsProcessingParameterFile, QgsProcessingParameterString, QgsMessageLog,
     QgsProcessingOutputRasterLayer, QgsProcessingOutputFolder,
     QgsProcessingOutputFile, QgsVariantUtils,
 )
@@ -179,6 +179,13 @@ class DEMMapSheetsAlgorithm(QgsProcessingAlgorithm):
                     failed={'merge_priority':c['merge_priority']}
                 failed.update(status='cancelled' if feedback.isCanceled() else 'failed',error=str(exc))
                 record.write_text(json.dumps(failed,ensure_ascii=False,indent=2),encoding='utf-8')
-            except Exception:
-                pass
+            except Exception as record_exc:
+                # The original exception still takes precedence, but the
+                # recording failure itself is logged, not silent (r4).
+                try:
+                    QgsMessageLog.logMessage(
+                        f'失敗記録を run.json へ保存できませんでした: {record_exc}',
+                        'DEM Map Sheets', Qgis.Warning)
+                except Exception:
+                    pass
             raise QgsProcessingException(str(exc)) from exc

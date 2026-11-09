@@ -37,6 +37,10 @@ def main():
                             float(writer['origin_y']) + h * res, 0, -res))
         ds.GetRasterBand(1).WriteArray(np.full((h, w), 100.0, dtype='float32'))
         ds.FlushCache(); ds = None
+        import os
+        if os.environ.get('FAKE_PDAL_FAIL') == '1':
+            print('mock pipeline failure', file=sys.stderr)
+            return 3
         return 0
     return 2
 
@@ -134,6 +138,93 @@ class RunFailureTests(unittest.TestCase):
         self.assertFalse((out / 'work').exists())
         record = json.loads((out / 'run.json').read_text(encoding='utf-8'))
         self.assertEqual(record['status'], 'completed')
+
+
+class PruneRobustnessTests(unittest.TestCase):
+    def test_prune_is_recursive(self):
+        with tempfile.TemporaryDirectory() as td:
+            work = Path(td) / 'work'
+            deep = work / 'a' / 'b' / 'c'
+            deep.mkdir(parents=True)
+            (work / 'top.tif').write_bytes(b'x' * 1000)
+            (work / 'a' / 'mid.tif').write_bytes(b'x' * 1000)
+            (deep / 'deep.tif').write_bytes(b'x' * 1000)
+            (deep / 'deep.log').write_text('diag')
+            (work / 'a' / 'keep.json').write_text('{}')
+            removed, retained = prune_work_after_failure(work)
+            self.assertEqual(removed, 3000)
+            remaining = sorted(str(p.relative_to(work)) for p in work.rglob('*') if p.is_file())
+            self.assertEqual(remaining, ['a/b/c/deep.log', 'a/keep.json'])
+            self.assertTrue((work / 'a' / 'b' / 'c').is_dir())
+
+    def test_prune_survives_unlink_oserror(self):
+        from unittest import mock
+        with tempfile.TemporaryDirectory() as td:
+            work = Path(td) / 'work'
+            work.mkdir()
+            (work / 'big.tif').write_bytes(b'x' * 1000)
+            (work / 'other.vrt').write_text('vrt')
+            (work / 'keep.log').write_text('log')
+            real_unlink = Path.unlink
+
+            def flaky(self, missing_ok=False):
+                if self.suffix == '.tif':
+                    raise OSError('simulated unlink failure')
+                return real_unlink(self, missing_ok=missing_ok)
+
+            with mock.patch.object(Path, 'unlink', flaky):
+                removed, retained = prune_work_after_failure(work)
+            self.assertTrue((work / 'big.tif').exists())
+            self.assertFalse((work / 'other.vrt').exists())
+            self.assertGreater(retained, 0)
+
+    def test_original_exception_survives_prune_failure(self):
+        from unittest import mock
+        import dem_map_sheets.engine.dem_pipeline as pipeline_module
+        with tempfile.TemporaryDirectory() as td:
+            csv = Path(td) / 'pts.csv'
+            csv.write_text('X,Y,Z\n0,0,100\n', encoding='utf-8')
+            cfg = dict(input_type='text', text_mode='points', inputs=[str(csv)],
+                       input_crs='EPSG:6677', target_crs='EPSG:6677',
+                       cell_size=10.0, point_tile_size=4, max_pixels=10 ** 9,
+                       source_nodata=None, pdal_path='/nonexistent/pdal',
+                       merge_priority='last')
+            with mock.patch.object(pipeline_module, 'prune_work_after_failure',
+                                   side_effect=OSError('simulated prune failure')):
+                with self.assertRaises(ValueError):
+                    run(cfg, Path(td) / 'out', gdal, osr, _Feedback())
+
+
+@unittest.skipIf(os.name == 'nt', 'fake PDAL executable is a POSIX script')
+class RunFailureDiagnosticsTests(unittest.TestCase):
+    def test_pipeline_failure_keeps_logs_and_json(self):
+        from unittest import mock
+        with tempfile.TemporaryDirectory() as td:
+            root = Path(td)
+            csv = root / 'pts.csv'
+            csv.write_text('X,Y,Z\n0,0,100\n10,0,101\n0,10,102\n10,10,103\n',
+                           encoding='utf-8')
+            fake = root / 'fake_pdal'
+            fake.write_text('#!/usr/bin/env python3\n' + FAKE_PDAL, encoding='utf-8')
+            fake.chmod(fake.stat().st_mode | stat.S_IEXEC)
+            cfg = dict(input_type='text', text_mode='points', inputs=[str(csv)],
+                       input_crs='EPSG:6677', target_crs='EPSG:6677',
+                       cell_size=10.0, point_tile_size=4, max_pixels=10 ** 9,
+                       source_nodata=None, pdal_path=str(fake),
+                       merge_priority='last')
+            out = root / 'out'
+            with mock.patch.dict(os.environ, {'FAKE_PDAL_FAIL': '1'}):
+                with self.assertRaises(RuntimeError):
+                    run(cfg, out, gdal, osr, _Feedback())
+            work = out / 'work'
+            names = sorted(p.name for p in work.rglob('*') if p.is_file())
+            for expected in ('block_000000_pdal.log', 'block_000000_pdal.log.stderr',
+                             'block_000000_pipeline.json', 'point_sources.json',
+                             'input_report.json'):
+                self.assertIn(expected, names)
+            self.assertFalse(any(n.endswith('.tif') for n in names))
+            record = json.loads((out / 'run.json').read_text(encoding='utf-8'))
+            self.assertEqual(record['work_retained'], 'diagnostics_only')
 
 
 class MergeFailureTests(unittest.TestCase):

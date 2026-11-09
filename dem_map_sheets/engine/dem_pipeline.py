@@ -46,19 +46,19 @@ def prune_work_after_failure(work,keep_suffixes=('.log','.stderr','.stdout','.js
 def _record_failure(out,work,config,exc,feedback):
     """Prune the failed run's work directory (unless keep_work) and
     record the failure in run.json. Never raises."""
-    keep=bool(config.get('keep_work',False))
-    removed=None;retained=None
-    if keep:
-        retained_mode='all'
-        retained=sum(f.stat().st_size for f in Path(work).rglob('*')
-                     if f.is_file()) if Path(work).is_dir() else 0
-        removed=0
-    elif Path(work).is_dir():
-        removed,retained=prune_work_after_failure(work)
-        retained_mode='diagnostics_only'
-    else:
-        retained_mode='none'
     try:
+        keep=bool(config.get('keep_work',False))
+        removed=None;retained=None
+        if keep:
+            retained_mode='all'
+            retained=sum(f.stat().st_size for f in Path(work).rglob('*')
+                         if f.is_file()) if Path(work).is_dir() else 0
+            removed=0
+        elif Path(work).is_dir():
+            removed,retained=prune_work_after_failure(work)
+            retained_mode='diagnostics_only'
+        else:
+            retained_mode='none'
         record={'status':'cancelled' if (feedback is not None and feedback.isCanceled()) else 'failed',
             'error':str(exc),'merge_priority':config.get('merge_priority','last'),
             'work_dir':str(work),'work_retained':retained_mode,
