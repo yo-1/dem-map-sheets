@@ -15,10 +15,20 @@ def gtiff_options():
 
 
 def materialize_geotiff(source,dest,gdal):
-    ds=gdal.Translate(str(dest),str(source),format='GTiff',outputType=gdal.GDT_Float32,
-        noData=NODATA,creationOptions=gtiff_options())
-    if ds is None: raise RuntimeError('GeoTIFF creation failed: '+str(dest))
-    ds.FlushCache();ds=None
+    # Write to a temporary sibling and rename, so a failure can never
+    # leave a partial file at the final path (deliverable protection:
+    # every output file is complete-or-absent).
+    dest=Path(dest);tmp=dest.with_name(dest.name+'.part')
+    try:
+        ds=gdal.Translate(str(tmp),str(source),format='GTiff',outputType=gdal.GDT_Float32,
+            noData=NODATA,creationOptions=gtiff_options())
+        if ds is None: raise RuntimeError('GeoTIFF creation failed: '+str(dest))
+        ds.FlushCache();ds=None
+        os.replace(tmp,dest)
+    except BaseException:
+        try:tmp.unlink()
+        except OSError:pass
+        raise
     return str(dest)
 
 
@@ -59,10 +69,28 @@ def _record_failure(out,work,config,exc,feedback):
             retained_mode='diagnostics_only'
         else:
             retained_mode='none'
+        # Inventory what the failed run leaves outside work/ (r4 O-1):
+        # the per-source GeoTIFFs in 01_source_dem are large, so
+        # run.json records exactly which files remain and their sizes.
+        # They are kept deliberately: the run directory is created
+        # fresh for every run (never a pre-existing deliverable
+        # location), a completed per-source DEM is a valid product,
+        # and materialize/merge now guarantee complete-or-absent, so
+        # nothing partial masquerades as a deliverable.
+        try:
+            outputs_present=[]
+            for path in sorted(Path(out).rglob('*')):
+                rel=path.relative_to(out)
+                if path.is_file() and rel.parts[0]!='work' and path.name!='run.json':
+                    outputs_present.append({'path':rel.as_posix(),
+                        'bytes':path.stat().st_size})
+        except OSError:
+            outputs_present='unknown'
         record={'status':'cancelled' if (feedback is not None and feedback.isCanceled()) else 'failed',
             'error':str(exc),'merge_priority':config.get('merge_priority','last'),
             'work_dir':str(work),'work_retained':retained_mode,
-            'work_removed_bytes':removed,'work_retained_bytes':retained}
+            'work_removed_bytes':removed,'work_retained_bytes':retained,
+            'outputs_present':outputs_present}
         (Path(out)/'run.json').write_text(json.dumps(record,ensure_ascii=False,indent=2),encoding='utf-8')
     except Exception:
         pass

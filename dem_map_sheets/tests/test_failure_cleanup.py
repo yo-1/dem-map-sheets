@@ -121,6 +121,57 @@ class RunFailureTests(unittest.TestCase):
             if p.is_file():
                 self.assertTrue(p.name.endswith(('.log', '.stderr', '.stdout', '.json', '.txt')), p.name)
 
+    def test_failure_record_inventories_remaining_outputs(self):
+        from unittest import mock
+        import dem_map_sheets.engine.dem_pipeline as dp
+        out = Path(self._tmp.name) / 'out_inv'
+        with mock.patch.object(dp, 'merge_geotiffs',
+                               side_effect=RuntimeError('merge boom')):
+            with self.assertRaises(RuntimeError):
+                run(self._cfg(), out, gdal, osr, _Feedback())
+        record = json.loads((out / 'run.json').read_text(encoding='utf-8'))
+        paths = [o['path'] for o in record['outputs_present']]
+        self.assertEqual(paths, ['01_source_dem/dem_00001.tif'])
+        self.assertGreater(record['outputs_present'][0]['bytes'], 0)
+
+    def test_cancelled_run_records_cancelled_status(self):
+        class CancelledFeedback(_Feedback):
+            def isCanceled(self):
+                return True
+        src_path = Path(self._tmp.name) / 'dem.tif'
+        ds = gdal.GetDriverByName('GTiff').Create(str(src_path), 4, 4, 1,
+                                                  gdal.GDT_Float32)
+        ds.SetGeoTransform((0, 10, 0, 40, 0, -10))
+        srs = osr.SpatialReference()
+        srs.ImportFromEPSG(6677)
+        ds.SetProjection(srs.ExportToWkt())
+        ds.GetRasterBand(1).Fill(100.0)
+        ds = None
+        cfg = dict(input_type='raster', inputs=[str(src_path)],
+                   input_crs='', target_crs='EPSG:6677', cell_size=10.0,
+                   max_pixels=10 ** 9, source_nodata=None,
+                   merge_priority='last')
+        out = Path(self._tmp.name) / 'out_cancel'
+        with self.assertRaises(RuntimeError):
+            run(cfg, out, gdal, osr, CancelledFeedback())
+        record = json.loads((out / 'run.json').read_text(encoding='utf-8'))
+        self.assertEqual(record['status'], 'cancelled')
+
+    def test_record_failure_never_raises_with_broken_rglob(self):
+        # F-1: with keep_work=True the retained-byte sum walks the
+        # tree; an OSError there (or in the outputs inventory) must
+        # not escape _record_failure, so the caller's original
+        # exception is what propagates from run().
+        from unittest import mock
+        import dem_map_sheets.engine.dem_pipeline as dp
+        out = Path(self._tmp.name) / 'out_f1'
+        work = out / 'work'
+        work.mkdir(parents=True)
+        with mock.patch.object(Path, 'rglob',
+                               side_effect=OSError('simulated stat failure')):
+            dp._record_failure(out, work, {'keep_work': True},
+                               ValueError('original'), _Feedback())
+
     def test_failure_with_keep_work_retains_everything(self):
         out = Path(self._tmp.name) / 'out_keep'
         with self.assertRaises(ValueError):
