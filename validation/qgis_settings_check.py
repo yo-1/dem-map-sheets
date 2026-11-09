@@ -115,6 +115,28 @@ def check_settings():
                         'Unset CRS must remain invalid for processing')
             check('unset_crs_save_load_roundtrip', unset_crs_roundtrip)
 
+            def invalid_crs_preserves_settings():
+                valid_profile = root / 'settings_invalid_crs.json'
+                baseline = {**params, 'CRS': 'EPSG:6677', 'INPUT_CRS': 'EPSG:6677'}
+                for key in ('CRS', 'INPUT_CRS'):
+                    for bad_value in ('not-a-crs', 'EPSG:99999', 'PROJCS["x"]'):
+                        dialog.setParameters(baseline)
+                        before = portable(dialog.mainWidget().createProcessingParameters(
+                            QgsProcessingParametersGenerator.Flag.SkipValidation))
+                        invalid_values = {**before, key: bad_value}
+                        from dem_map_sheets.profiles import save_profile
+                        save_profile(valid_profile, invalid_values)
+                        msg_start = len(messages)
+                        with patch.object(QFileDialog, 'getOpenFileName',
+                                          return_value=(str(valid_profile), 'JSON')):
+                            dialog.profile_buttons[1].click()
+                        after = portable(dialog.mainWidget().createProcessingParameters(
+                            QgsProcessingParametersGenerator.Flag.SkipValidation))
+                        require(before == after, (key, bad_value, before, after))
+                        require(any(m['kind'] == 'warning' and key in m['text']
+                                    for m in messages[msg_start:]), (key, bad_value, messages[msg_start:]))
+            check('invalid_crs_preserves_widgets', invalid_crs_preserves_settings)
+
             def missing():
                 require(profile.exists(), 'Roundtrip must pass first')
                 source.unlink(missing_ok=True)
