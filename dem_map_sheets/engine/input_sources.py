@@ -421,16 +421,21 @@ def prepare_inputs(c,work,gdal,osr,feedback=None):
                     report['detected'].append({'path':str(path),'kind':'lem','metadata':str(record['metadata']),
                                                'zone':detail.get('zone'),'survey_year':detail.get('survey_year'),'coordinate_scale':detail['coordinate_scale']})
                 elif kind=='grid':
-                    try: detected=autodetect_xyz(path,c['forest_axis_order'])
-                    except ValueError as exc:
-                        report['ignored'].append({'path':str(path),'reason':str(exc)});ordinal-=1;continue
                     if not c['input_crs'].strip(): raise ValueError('Forest CSV/XYZ grid requires input_crs')
-                    grid_cell=(infer_grid_cell(path,{**c,**detected,'source_nodata':c['forest_nodata']},feedback)
-                               if c['forest_grid_cell']=='auto' else float(c['forest_grid_cell']))
-                    source={**c,**detected,'source_nodata':c['forest_nodata'],
-                            'text_grid_cell':grid_cell}
-                    raw=work/f'forest_grid_{ordinal:06d}.tif'
-                    count=text_grid(path,raw,source,gdal,osr,feedback)
+                    try:
+                        detected=autodetect_xyz(path,c['forest_axis_order'])
+                        grid_cell=(infer_grid_cell(path,{**c,**detected,'source_nodata':c['forest_nodata']},feedback)
+                                   if c['forest_grid_cell']=='auto' else float(c['forest_grid_cell']))
+                        source={**c,**detected,'source_nodata':c['forest_nodata'],
+                                'text_grid_cell':grid_cell}
+                        raw=work/f'forest_grid_{ordinal:06d}.tif'
+                        count=text_grid(path,raw,source,gdal,osr,feedback)
+                    except ValueError as exc:
+                        # M-3: an unusable input is skipped with a user-visible
+                        # warning, not silently. Other inputs continue.
+                        report['ignored'].append({'path':str(path),'reason':str(exc)})
+                        if feedback is not None:feedback.pushWarning(f'入力を無視: {path} ({exc})')
+                        ordinal-=1;continue
                     report['detected'].append({'path':str(path),'kind':'xyz_grid','points':count,
                                                'grid_cell':grid_cell,**detected})
                 else:
