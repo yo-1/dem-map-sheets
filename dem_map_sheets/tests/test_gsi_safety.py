@@ -168,7 +168,8 @@ class EncodingAliasTests(unittest.TestCase):
     def test_aliases_accepted(self):
         for declared in ('UTF8', 'utf_8', 'SJIS', 'Windows-31J', 'eucjp',
                          'euc_jp', 'latin1', 'US-ASCII'):
-            data = XML.format(enc=declared).encode(declared)
+            body_codec = 'cp932' if declared == 'Windows-31J' else declared
+            data = XML.format(enc=declared).encode(body_codec)
             with self.subTest(declared=declared):
                 self.assertEqual(len(list(parse_dem(data))), 1)
 

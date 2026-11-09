@@ -65,10 +65,16 @@ def parse_dem(data, max_pixels=25000000, source_override='', feedback=None):
     # R-8b: normalise aliases (UTF8, SJIS, Windows-31J, latin1, ...)
     # to canonical codec names before the allow-list check, so safe
     # aliases are accepted while UTF-16/32 and others stay rejected.
-    try:
-        encoding = codecs.lookup(declared).name
-    except (LookupError, UnicodeDecodeError) as exc:
-        raise ValueError('Unsupported GSI XML encoding: ' + declared) from exc
+    # 'Windows-31J' is a common real-world label (WHATWG maps it to
+    # the Shift_JIS decoder) but CPython's codec registry has no such
+    # alias, so map it explicitly before the lookup.
+    if declared.strip().lower().replace('-', '_') == 'windows_31j':
+        encoding = 'cp932'
+    else:
+        try:
+            encoding = codecs.lookup(declared).name
+        except (LookupError, UnicodeDecodeError) as exc:
+            raise ValueError('Unsupported GSI XML encoding: ' + declared) from exc
     if encoding not in _GSI_ENCODINGS:
         raise ValueError('Unsupported GSI XML encoding: ' + declared)
     codec = 'cp932' if encoding == 'shift_jis' else encoding
