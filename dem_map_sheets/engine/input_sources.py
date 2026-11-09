@@ -63,7 +63,7 @@ def explicit_file_parameter(value):
 
 def cancelled(feedback):
     if feedback is not None and feedback.isCanceled():
-        raise RuntimeError('Input conversion cancelled; partial outputs are incomplete')
+        raise RuntimeError('Input conversion cancelled; partial outputs are incomplete（処理がキャンセルされました。途中まで生成された出力ファイルは不完全なため、使用しないでください）')
 
 
 def say(feedback, text):

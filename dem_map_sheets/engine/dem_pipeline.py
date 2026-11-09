@@ -324,7 +324,7 @@ def _merge_auto(c,groups,out,gdal,osr,feedback=None):
     candidates=list(intersecting_sheets(bounds,zone,2500,c.get('max_priority_sheets',100000)))
     decisions=[];written=[]
     for number,sheet in enumerate(candidates,1):
-        if feedback is not None and feedback.isCanceled():raise RuntimeError('Cancelled')
+        if feedback is not None and feedback.isCanceled():raise RuntimeError('Cancelled（処理がキャンセルされました。途中まで生成された出力ファイルは不完全なため、使用しないでください）')
         scored=[]
         for i,g in enumerate(groups):
             coverage=_coverage_for_sheet(g['vrt'],sheet,cell,gdal)
@@ -405,7 +405,7 @@ def _run(config,output_dir,gdal,osr,feedback=None):
             prepared,report=prepare_inputs(c,work,gdal,osr,feedback)
             materialized=[]
             for i,path in enumerate(prepared['inputs'],1):
-                if feedback is not None and feedback.isCanceled():raise RuntimeError('Cancelled')
+                if feedback is not None and feedback.isCanceled():raise RuntimeError('Cancelled（処理がキャンセルされました。途中まで生成された出力ファイルは不完全なため、使用しないでください）')
                 dest=source_dir/f'dem_{i:05d}.tif';materialized.append(materialize_geotiff(path,dest,gdal))
                 if feedback is not None:feedback.setProgress(min(55,5+50*i/max(1,len(prepared['inputs']))))
             merged=merge_geotiffs(materialized,out/'02_merged_dem.tif',gdal,first_wins=(mode=='first'))
