@@ -382,7 +382,15 @@ def _path_error(exc,output_dir):
     if not filename or getattr(exc,'errno',None) not in (2,3,36,206):
         return None
     path=str(filename)
-    side='出力先' if path.startswith(str(output_dir)) else '入力側'
+    # Compare normalized components, not a raw string prefix. This handles
+    # relative output directories and avoids treating output2 as output.
+    try:
+        normalized_path = os.path.normcase(os.path.abspath(os.path.normpath(path)))
+        normalized_output = os.path.normcase(os.path.abspath(os.path.normpath(str(output_dir))))
+        side = ('出力先' if os.path.commonpath((normalized_path, normalized_output))
+                == normalized_output else '入力側')
+    except (ValueError, OSError, TypeError):
+        side = '入力側'
     length=f'パスの長さは{len(path)}文字です。' if len(path)>200 else ''
     return (f'ファイルのパスにアクセスできませんでした（{side}）。対象: {path}。'
         f'{length}フォルダーのパスが長すぎるとWindowsでは開けません。'
