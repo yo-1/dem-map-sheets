@@ -1,0 +1,10 @@
+DEM Map Sheets
+Copyright (C) 2026 yo-1
+SPDX-License-Identifier: GPL-3.0-only
+
+This plugin is derived from CS Map Sheets (csmap-sheets), also by yo-1,
+and reuses its input conversion code for GSI DEM, forestry LEM/grid products,
+LAS/LAZ point clouds, and text/raster normalization.
+
+TerrainRGB encoding follows the Forestry Open Data Standard formula:
+H = -10000 + (R*256*256 + G*256 + B) * 0.1.

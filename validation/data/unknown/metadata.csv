@@ -1,0 +1,3 @@
+﻿source,survey_year,accuracy_m,ground_density
+a.asc,2024,0.2,4
+b.asc,,0.01,100

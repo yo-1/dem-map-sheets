@@ -1,0 +1,16 @@
+{
+  "sources": [
+    {
+      "source": "a.asc",
+      "survey_year": 2024,
+      "accuracy_m": 0.2,
+      "ground_density": 4
+    },
+    {
+      "source": "b.asc",
+      "survey_year": null,
+      "accuracy_m": 0.01,
+      "ground_density": 100
+    }
+  ]
+}
