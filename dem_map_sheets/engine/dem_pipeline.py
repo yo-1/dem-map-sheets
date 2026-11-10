@@ -7,7 +7,7 @@ import os
 import shutil
 import sys
 import numpy as np
-from .input_sources import DEFAULTS as INPUT_DEFAULTS, _invalid_raster_reason, crs_of, discover, prepare_inputs, proj_epsg_version, validate_input, NODATA
+from .input_sources import DEFAULTS as INPUT_DEFAULTS, NoUsableInputError, _invalid_raster_reason, crs_of, discover, prepare_inputs, proj_epsg_version, validate_input, NODATA
 from .map_sheets import intersecting_sheets, dimensions
 
 
@@ -292,10 +292,22 @@ def _prepare_source_groups(c,work,source_dir,gdal,osr,feedback=None):
     """Normalize each top-level source independently so provenance survives overlap selection."""
     metadata=load_priority_metadata(c.get('priority_metadata',''))
     meta_rows=_metadata_lookup(metadata,c['inputs'])
-    groups=[];counter=0
+    groups=[];dropped=[];counter=0
     for source_index,(source,meta) in enumerate(zip(c['inputs'],meta_rows),1):
         source_work=work/f'source_{source_index:05d}'
-        prepared,report=prepare_inputs({**c,'inputs':[source]},source_work,gdal,osr,feedback)
+        try:
+            prepared,report=prepare_inputs({**c,'inputs':[source]},source_work,gdal,osr,feedback)
+        except NoUsableInputError as exc:
+            # This one source yielded nothing at all. With skipping on,
+            # that is a skippable source, not a fatal run: drop it and
+            # keep its record (D-2). With skipping off, prepare_inputs
+            # raises the specific invalid-input error before this one,
+            # so reaching here with skipping off stays fatal.
+            if not c.get('skip_invalid_rasters'):
+                raise
+            dropped.append({'source':str(source),'dropped':True,
+                            'ignored':[{'path':str(source),'reason':str(exc)}]})
+            continue
         rasters=[]
         for path in prepared['inputs']:
             counter+=1;dest=source_dir/f'dem_{counter:05d}.tif'
@@ -314,7 +326,10 @@ def _prepare_source_groups(c,work,source_dir,gdal,osr,feedback=None):
                 meta['ground_density']=dens[0]
         group_vrt=_group_vrt(rasters,work/f'source_{source_index:05d}.vrt',gdal)
         groups.append(dict(source=source,rasters=rasters,vrt=group_vrt,metadata=meta,input_report=report))
-    return groups
+    if not groups:
+        raise NoUsableInputError('使用可能なDEMが見つかりません（No usable DEMs found）: '
+            f'{len(dropped)} source(s) skipped as unusable')
+    return groups, dropped
 
 
 def _merge_auto(c,groups,out,gdal,osr,feedback=None):
@@ -387,11 +402,23 @@ def _path_error(exc,output_dir):
     path=str(filename)
     # Compare normalized components, not a raw string prefix. This handles
     # relative output directories and avoids treating output2 as output.
+    # Two Windows shapes broke this comparison (D-1): an extended-length
+    # \\?\ prefix on the failing path, and the failing path being an
+    # ANCESTOR of the output dir (creating a long output path fails on
+    # an intermediate folder first). Strip the prefix textually, and
+    # count both directions of containment as the output side.
+    def _clean(value):
+        text=str(value)
+        if text.startswith('\\\\?\\UNC\\'):
+            text='\\\\'+text[8:]
+        elif text.startswith('\\\\?\\'):
+            text=text[4:]
+        return os.path.normcase(os.path.abspath(os.path.normpath(text)))
     try:
-        normalized_path = os.path.normcase(os.path.abspath(os.path.normpath(path)))
-        normalized_output = os.path.normcase(os.path.abspath(os.path.normpath(str(output_dir))))
-        side = ('出力先' if os.path.commonpath((normalized_path, normalized_output))
-                == normalized_output else '入力側')
+        normalized_path = _clean(path)
+        normalized_output = _clean(output_dir)
+        common = os.path.commonpath((normalized_path, normalized_output))
+        side = '出力先' if common in (normalized_output, normalized_path) else '入力側'
     except (ValueError, OSError, TypeError):
         side = '入力側'
     length=f'パスの長さは{len(path)}文字です。' if len(path)>200 else ''
@@ -461,10 +488,10 @@ def _run(config,output_dir,gdal,osr,feedback=None):
         mode=config.get('merge_priority','last')
         if mode=='auto':
             work.mkdir(parents=True,exist_ok=False)
-            groups=_prepare_source_groups(c,work,source_dir,gdal,osr,feedback)
+            groups,dropped=_prepare_source_groups(c,work,source_dir,gdal,osr,feedback)
             materialized=[p for g in groups for p in g['rasters']]
             merged,priority_report=_merge_auto(c,groups,out,gdal,osr,feedback)
-            report={'mode':'per_source','sources':[g['input_report'] for g in groups]}
+            report={'mode':'per_source','sources':[g['input_report'] for g in groups]+dropped}
         else:
             prepared,report=prepare_inputs(c,work,gdal,osr,feedback)
             materialized=[]

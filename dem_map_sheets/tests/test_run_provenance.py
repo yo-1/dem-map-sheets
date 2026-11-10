@@ -97,6 +97,20 @@ class PathErrorTests(unittest.TestCase):
         message = _path_error(self._oserror(206, 'C:/inputs/dem.tif'), self.out)
         self.assertIn('入力側', message)
 
+    def test_ancestor_of_output_is_output_side(self):
+        # Creating a long output path fails on an intermediate
+        # folder (an ancestor of the result dir) first; that is an
+        # output-side failure, not an input one (D-1).
+        out = self.out / 'demmap_result'
+        exc = self._oserror(3, str(self.out))
+        self.assertIn('（出力先）', _path_error(exc, out))
+
+    def test_extended_length_prefix_is_output_side(self):
+        # GDAL/Windows may report the failing path with an
+        # extended-length prefix the output dir does not carry.
+        exc = self._oserror(206, chr(92) * 2 + '?' + chr(92) + str(self.out / '02_merged_dem.tif'))
+        self.assertIn('（出力先）', _path_error(exc, self.out))
+
     def test_other_errno_is_not_translated(self):
         self.assertIsNone(_path_error(self._oserror(13, str(self.out / 'x')), self.out))
 

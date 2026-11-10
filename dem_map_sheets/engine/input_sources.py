@@ -473,6 +473,12 @@ def normalize_gsi_groups(paths,work,c,gdal,osr,feedback=None):
     return results
 
 
+class NoUsableInputError(ValueError):
+    """Every input was unusable. A ValueError subclass so per-source
+    callers (auto priority) can tell 'this source alone yielded
+    nothing' apart from other input errors when skipping is on."""
+
+
 def _invalid_raster_reason(path,exc):
     return (f'入力ラスターを読み込めません: {path}。ファイルが破損していないか、TIFF等の対応形式か、'
             f'単一バンドの標高データかを確認してください。GDAL詳細: {exc}')
@@ -521,7 +527,7 @@ def prepare_inputs(c,work,gdal,osr,feedback=None):
         if len(report['ignored'])>20 and feedback is not None:
             feedback.pushWarning(f"入力を無視: ほか {len(report['ignored'])-20} 件（詳細は input_report.json を参照）")
         if not kept:
-            raise ValueError('使用可能なDEMが見つかりません（No usable DEMs found）: '
+            raise NoUsableInputError('使用可能なDEMが見つかりません（No usable DEMs found）: '
                 f"{len(report['ignored'])} input(s) could not be opened")
         return {**c,'inputs':kept}, report
     if c['input_type']=='forest' and c['forest_grid_cell']!='auto':
@@ -694,7 +700,7 @@ def prepare_inputs(c,work,gdal,osr,feedback=None):
             ignored=report.get('ignored') or []
             if ignored:
                 first='; '.join(f"{i['path']}: {i['reason']}" for i in ignored[:3])
-                raise ValueError(f'使用可能なDEMが見つかりません（No usable DEMs found）: {len(ignored)} input(s) ignored; '
+                raise NoUsableInputError(f'使用可能なDEMが見つかりません（No usable DEMs found）: {len(ignored)} input(s) ignored; '
                                  f'first reasons: {first}')
             raise ValueError('使用可能なDEMが見つかりません（No usable DEMs found (XML may contain metadata only)）')
         report.update(status='completed',prepared_rasters=outputs);save()

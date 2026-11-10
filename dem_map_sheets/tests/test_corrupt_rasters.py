@@ -101,7 +101,7 @@ class CorruptRasterTests(unittest.TestCase):
         c = dict(DEFAULTS)
         c.update(input_type='raster', inputs=[str(p) for p in inputs],
                  input_crs='', target_crs='EPSG:6677', cell_size=1.0,
-                 max_pixels=10 ** 9)
+                 source_nodata=None, max_pixels=10 ** 9)
         c.update(kw)
         return c
 
@@ -134,6 +134,36 @@ class CorruptRasterTests(unittest.TestCase):
         record = json.loads((out / 'run.json').read_text(encoding='utf-8'))
         self.assertEqual(record['status'], 'failed')
         self.assertIn('読み込めません', record['error'])
+
+    def test_auto_mode_skips_empty_tif_and_processes_valid(self):
+        # D-2: with skipping on and merge_priority='auto', a folder
+        # holding one valid DEM and one empty TIFF must still
+        # process the valid DEM, and the bad file must stay recorded.
+        folder = self.root / 'mixed'
+        folder.mkdir()
+        (folder / 'valid.tif').write_bytes(self.base)
+        (folder / 'empty.tif').write_bytes(b'')
+        for normalize in (False, True):
+            with self.subTest(normalize_rasters=normalize):
+                out = self.root / f'out_auto_skip_{normalize}'
+                manifest = run(self._cfg([folder], merge_priority='auto',
+                                         skip_invalid_rasters=True,
+                                         normalize_rasters=normalize),
+                               out, gdal, osr, _Feedback())
+                self.assertTrue(Path(manifest['merged_dem']).exists())
+                sources = manifest['input_report']['sources']
+                dropped = [e for e in sources if e.get('dropped')]
+                self.assertEqual(len(dropped), 1)
+                self.assertIn('empty.tif', dropped[0]['ignored'][0]['path'])
+
+    def test_auto_mode_all_invalid_still_fails_with_skip(self):
+        folder = self.root / 'only_bad'
+        folder.mkdir()
+        (folder / 'empty.tif').write_bytes(b'')
+        with self.assertRaises(ValueError) as ctx:
+            run(self._cfg([folder], merge_priority='auto', skip_invalid_rasters=True),
+                self.root / 'out_auto_allbad', gdal, osr, _Feedback())
+        self.assertIn('使用可能なDEMが見つかりません', str(ctx.exception))
 
     def test_auto_mode_also_stops(self):
         out = self.root / 'out_auto'
