@@ -19,6 +19,7 @@ except ImportError:
 
 NODATA = -999999.0
 DEFAULTS = dict(input_type='raster', recursive=True, normalize_rasters=False,
+    skip_invalid_rasters=False,
     input_crs='', vertical_reference='', text_delimiter='comma', text_encoding='utf-8-sig',
     text_skip_rows=1, text_columns=[1,2,3], text_axis_order='east_north',
     text_mode='grid', text_grid_cell=1.0, point_method='idw', point_radius=2.0,
@@ -474,8 +475,11 @@ def prepare_inputs(c,work,gdal,osr,feedback=None):
             raise ValueError('forest_grid_cell must be auto or positive（森林格子セルは auto または正の値を指定してください）') from exc
         if not math.isfinite(configured_cell) or configured_cell<=0:
             raise ValueError('forest_grid_cell must be auto or positive（森林格子セルは auto または正の値を指定してください）')
+    if type(c.get('skip_invalid_rasters', False)) is not bool:
+        raise ValueError('skip_invalid_rasters は true または false を指定してください')
     work=Path(work);work.mkdir(parents=True,exist_ok=False)
     report={'status':'running','input_type':c['input_type'],'sources':[],
+             'ignored':[], 'skip_invalid_rasters':c.get('skip_invalid_rasters', False),
             'vertical_reference':c['vertical_reference'],'vertical_conversion':False}
     reportpath=work/'input_report.json'
     def save():reportpath.write_text(json.dumps(report,ensure_ascii=False,indent=2),encoding='utf-8')
@@ -582,8 +586,25 @@ def prepare_inputs(c,work,gdal,osr,feedback=None):
                         count=text_grid(path,raw,c,gdal,osr,feedback)
                         report['sources'].append({'path':path,'points':count})
                     else:report['sources'].append({'path':path})
-                    outputs.append(normalize(raw,work/f'aligned_{ordinal:06d}.tif',c,gdal,osr,feedback,c['input_type']=='raster'))
+                    if c['input_type']=='raster':
+                        try:
+                            aligned=normalize(raw,work/f'aligned_{ordinal:06d}.tif',c,gdal,osr,feedback,True)
+                        except (ValueError, RuntimeError) as exc:
+                            reason=f'ラスターを読み込めません: {path}（{exc}）'
+                            report['ignored'].append({'path':str(path),'reason':str(exc)})
+                            save()
+                            if not c.get('skip_invalid_rasters',False):
+                                raise ValueError(reason + '。処理を停止しました。') from exc
+                            if feedback is not None and len(report['ignored'])<=20:
+                                feedback.pushWarning(f'入力を無視: {path} ({exc})')
+                            ordinal-=1
+                            continue
+                        outputs.append(aligned)
+                    else:
+                        outputs.append(normalize(raw,work/f'aligned_{ordinal:06d}.tif',c,gdal,osr,feedback,False))
                 save()
+            if c['input_type']=='raster' and len(report['ignored'])>20 and feedback is not None:
+                feedback.pushWarning(f"入力を無視: ほか {len(report['ignored'])-20} 件（詳細は input_report.json を参照）")
             # A horizontal CRS override cannot make old/new vertical realizations agree.
             if any('jgd2024' in d for d in gsi_datums) and any('jgd2011' in d or 'jgd2000' in d for d in gsi_datums):
                 raise ValueError('GSI old/new datum labels are mixed. Unify elevation realizations before merging.')
