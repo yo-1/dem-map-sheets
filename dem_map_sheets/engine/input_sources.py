@@ -499,7 +499,7 @@ def prepare_inputs(c,work,gdal,osr,feedback=None):
                 say(feedback,f'Forest DEM ({kind}): {path}')
                 if kind=='lem':
                     if not c['input_crs'].strip():
-                        raise ValueError('LEM requires input_crs because the zone number does not identify the datum realization')
+                        raise ValueError('LEMには入力CRS（元の座標系）の指定が必要です。系番号だけでは測地基準系を特定できません。入力データの測地系を確認し、EPSGコード（例：EPSG:6677）を指定してください。')
                     array,gt,detail=read_lem(path,record['metadata'],c['max_input_pixels'],
                         c['forest_lem_coordinate_scale'],feedback)
                     raw=work/f'forest_lem_{ordinal:06d}.tif'
@@ -508,7 +508,7 @@ def prepare_inputs(c,work,gdal,osr,feedback=None):
                     report['detected'].append({'path':str(path),'kind':'lem','metadata':str(record['metadata']),
                                                'zone':detail.get('zone'),'survey_year':detail.get('survey_year'),'coordinate_scale':detail['coordinate_scale']})
                 elif kind=='grid':
-                    if not c['input_crs'].strip(): raise ValueError('Forest CSV/XYZ grid requires input_crs')
+                    if not c['input_crs'].strip(): raise ValueError('森林格子CSV/XYZには入力CRS（元の座標系）の指定が必要です。元データの座標系を確認し、EPSGコード（例：EPSG:6677）を指定してください。')
                     try:
                         detected=autodetect_xyz(path,c['forest_axis_order'])
                         grid_cell=(infer_grid_cell(path,{**c,**detected,'source_nodata':c['forest_nodata']},feedback)
@@ -590,13 +590,14 @@ def prepare_inputs(c,work,gdal,osr,feedback=None):
                         try:
                             aligned=normalize(raw,work/f'aligned_{ordinal:06d}.tif',c,gdal,osr,feedback,True)
                         except (ValueError, RuntimeError) as exc:
-                            reason=f'ラスターを読み込めません: {path}（{exc}）'
+                            reason=(f'入力ラスターを読み込めません: {path}。ファイルが破損していないか、TIFF等の対応形式か、'
+                                    f'単一バンドの標高データかを確認してください。GDAL詳細: {exc}')
                             report['ignored'].append({'path':str(path),'reason':str(exc)})
                             save()
                             if not c.get('skip_invalid_rasters',False):
                                 raise ValueError(reason + '。処理を停止しました。') from exc
                             if feedback is not None and len(report['ignored'])<=20:
-                                feedback.pushWarning(f'入力を無視: {path} ({exc})')
+                                feedback.pushWarning(f'入力を無視: {path}。ファイル形式・破損・バンド数を確認してください。GDAL詳細: {exc}')
                             ordinal-=1
                             continue
                         outputs.append(aligned)
