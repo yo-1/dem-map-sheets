@@ -84,6 +84,31 @@ class KeepWorkMirrorTests(unittest.TestCase):
         self._run_fake(keep_work=False)
         self.assertFalse((self.work / 'pdal_ascii_area').exists())
 
+    def _run_fake_empty(self, **cfg):
+        def fake_impl(c, w, gdal, osr, feedback, exe, staged, pdal_root):
+            return [], {}
+
+        base = {'pdal_path': str(self.exe)}
+        base.update(cfg)
+        with mock.patch.object(point_inputs, '_points_to_rasters', fake_impl):
+            point_inputs.points_to_rasters(base, self.work, None, None)
+
+    def test_keep_work_leaves_no_empty_mirror(self):
+        # A broken input fails before PDAL writes anything: the
+        # mirror must not remain as an empty directory.
+        self._run_fake_empty(keep_work=True)
+        self.assertFalse((self.work / 'pdal_ascii_area').exists())
+
+    def test_keep_work_leaves_no_mirror_when_impl_raises(self):
+        def fake_impl(c, w, gdal, osr, feedback, exe, staged, pdal_root):
+            raise RuntimeError('PDAL failed')
+
+        with mock.patch.object(point_inputs, '_points_to_rasters', fake_impl):
+            with self.assertRaises(RuntimeError):
+                point_inputs.points_to_rasters(
+                    {'pdal_path': str(self.exe), 'keep_work': True}, self.work, None, None)
+        self.assertFalse((self.work / 'pdal_ascii_area').exists())
+
 
 class AsciiTempAreaFallbackTests(unittest.TestCase):
     """When TEMP itself is non-ASCII (e.g. a Japanese user profile),

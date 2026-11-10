@@ -354,7 +354,10 @@ def points_to_rasters(c,work,gdal,osr,feedback=None):
             # buffer rasters) lived in the work dir and survived with
             # keep_work. Mirror them back so the setting still means
             # the same thing with a non-ASCII output folder.
-            if c.get('keep_work'):
+            # An area with no files (e.g. a broken input failed
+            # before PDAL wrote anything) must not leave an empty
+            # mirror directory behind.
+            if c.get('keep_work') and any(q.is_file() for q in pdal_root.rglob('*')):
                 mirror=Path(work)/'pdal_ascii_area'
                 try:
                     shutil.copytree(pdal_root,mirror,dirs_exist_ok=True)
