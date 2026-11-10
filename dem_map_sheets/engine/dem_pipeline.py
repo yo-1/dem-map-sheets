@@ -6,7 +6,7 @@ import math
 import os
 import shutil
 import numpy as np
-from .input_sources import DEFAULTS as INPUT_DEFAULTS, crs_of, discover, prepare_inputs, proj_epsg_version, validate_input, NODATA
+from .input_sources import DEFAULTS as INPUT_DEFAULTS, _invalid_raster_reason, crs_of, discover, prepare_inputs, proj_epsg_version, validate_input, NODATA
 from .map_sheets import intersecting_sheets, dimensions
 
 
@@ -428,6 +428,11 @@ def _run_scoped(config,output_dir,gdal,osr,feedback=None):
 
 
 def _run(config,output_dir,gdal,osr,feedback=None):
+    # Whether the grid coordinate reference was chosen by the caller
+    # or left to the default must be judged on the raw config, before
+    # DEFAULTS fills the key in.
+    config={**config,'forest_grid_coordinate_reference_source':
+        'explicit' if 'forest_grid_coordinate_reference' in config else 'default'}
     c={**INPUT_DEFAULTS,**config}
     # KD-2: validate_input existed but was never called; configuration
     # inconsistencies now fail here with a clear error, before any
@@ -462,7 +467,11 @@ def _run(config,output_dir,gdal,osr,feedback=None):
             materialized=[]
             for i,path in enumerate(prepared['inputs'],1):
                 if feedback is not None and feedback.isCanceled():raise RuntimeError('Cancelled（処理がキャンセルされました。途中まで生成された出力ファイルは不完全なため、使用しないでください）')
-                dest=source_dir/f'dem_{i:05d}.tif';materialized.append(materialize_geotiff(path,dest,gdal))
+                dest=source_dir/f'dem_{i:05d}.tif'
+                try:
+                    materialized.append(materialize_geotiff(path,dest,gdal))
+                except Exception as exc:
+                    raise ValueError(_invalid_raster_reason(path,exc)) from exc
                 if feedback is not None:feedback.setProgress(min(55,5+50*i/max(1,len(prepared['inputs']))))
             merged=merge_geotiffs(materialized,out/'02_merged_dem.tif',gdal,first_wins=(mode=='first'))
             priority_report={'mode':mode}

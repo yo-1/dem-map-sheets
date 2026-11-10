@@ -25,7 +25,9 @@ DEFAULTS = dict(input_type='raster', recursive=True, normalize_rasters=False,
     text_mode='grid', text_grid_cell=1.0, point_method='idw', point_radius=2.0,
     lidar_mode='classified', ground_classes=[2], pdal_path='', point_tile_size=512,
     forest_axis_order='north_east', forest_grid_cell='auto',
-    forest_grid_coordinate_reference='center',
+    # forest_grid_coordinate_reference is deliberately NOT in DEFAULTS:
+    # its presence in a config is what marks the choice as explicit
+    # (recorded as coordinate_reference_source in the input report).
     forest_lem_coordinate_scale='auto', forest_nodata=-9999.0,
     max_points_auto=10000000, max_input_pixels=25000000, max_input_files=100000,
     smrf_cell=1.0, smrf_slope=0.15, smrf_threshold=0.5, smrf_scalar=1.25, smrf_window=18.0)
@@ -236,6 +238,8 @@ def validate_input(c):
         if not math.isfinite(scale) or scale<=0: raise ValueError('forest_lem_coordinate_scale must be auto or positive')
     if c.get('forest_grid_coordinate_reference','center') not in ('center','upper_left'):
         raise ValueError('forest_grid_coordinate_reference は center（セル中心）または upper_left（セル左上角）を指定してください')
+    if c.get('forest_grid_coordinate_reference_source') not in (None,'explicit','default'):
+        raise ValueError('forest_grid_coordinate_reference_source は explicit または default を指定してください')
     if c['forest_grid_cell'] != 'auto':
         try: grid_cell=float(c['forest_grid_cell'])
         except (TypeError,ValueError) as exc: raise ValueError('forest_grid_cell must be auto or positive（森林格子セルは auto または正の値を指定してください）') from exc
@@ -469,9 +473,57 @@ def normalize_gsi_groups(paths,work,c,gdal,osr,feedback=None):
     return results
 
 
+def _invalid_raster_reason(path,exc):
+    return (f'入力ラスターを読み込めません: {path}。ファイルが破損していないか、TIFF等の対応形式か、'
+            f'単一バンドの標高データかを確認してください。GDAL詳細: {exc}')
+
+
 def prepare_inputs(c,work,gdal,osr,feedback=None):
     if c['input_type']=='raster' and not c['normalize_rasters'] and not c['input_crs']:
-        return c, {'mode':'raster_passthrough'}
+        # Passthrough must not be a blind spot: the inputs are never
+        # opened on this path, so a corrupt file would otherwise sail
+        # through preparation and fail later with a raw GDAL error
+        # (or worse). Open-check every input and apply the same
+        # policy as the normalize path: stop explicitly by default,
+        # or record and skip when skip_invalid_rasters is set.
+        report={'mode':'raster_passthrough','ignored':[],
+                'skip_invalid_rasters':bool(c.get('skip_invalid_rasters',False))}
+        kept=[]
+        for path in c['inputs']:
+            cancelled(feedback)
+            ds=None;error=None
+            try:
+                ds=gdal.Open(str(path))
+                if ds is None or ds.RasterCount<1:
+                    error=ValueError('GDAL could not open the raster or it has no bands')
+                else:
+                    # Opening is not enough: a file whose header is
+                    # intact but whose strips are damaged opens fine
+                    # and only fails when the data is read. A checksum
+                    # pass reads every strip without reprojecting or
+                    # resampling anything, so passthrough stays cheap
+                    # but stops being blind.
+                    for band_index in range(1,ds.RasterCount+1):
+                        if ds.GetRasterBand(band_index).Checksum()==-1:
+                            error=ValueError('GDAL could not read the raster data (checksum failed)')
+                            break
+            except Exception as exc:
+                error=exc
+            finally:
+                ds=None
+            if error is None:
+                kept.append(path);continue
+            report['ignored'].append({'path':str(path),'reason':str(error)})
+            if not report['skip_invalid_rasters']:
+                raise ValueError(_invalid_raster_reason(path,error) + '。処理を停止しました。') from error
+            if feedback is not None and len(report['ignored'])<=20:
+                feedback.pushWarning(f'入力を無視: {path}。ファイル形式・破損・バンド数を確認してください。GDAL詳細: {error}')
+        if len(report['ignored'])>20 and feedback is not None:
+            feedback.pushWarning(f"入力を無視: ほか {len(report['ignored'])-20} 件（詳細は input_report.json を参照）")
+        if not kept:
+            raise ValueError('使用可能なDEMが見つかりません（No usable DEMs found）: '
+                f"{len(report['ignored'])} input(s) could not be opened")
+        return {**c,'inputs':kept}, report
     if c['input_type']=='forest' and c['forest_grid_cell']!='auto':
         # Configuration, not input data: an invalid configured cell
         # size must raise here instead of marking every input as
@@ -538,7 +590,8 @@ def prepare_inputs(c,work,gdal,osr,feedback=None):
                     report['detected'].append({'path':str(path),'kind':'xyz_grid','points':count,
                                                'grid_cell':grid_cell,
                                                'coordinate_reference':source['grid_coordinate_reference'],
-                                               'coordinate_reference_source':'explicit_configuration' if source['grid_coordinate_reference']!='center' else 'default_center_unverified',
+                                               'coordinate_reference_source':(c.get('forest_grid_coordinate_reference_source')
+                                                   or ('explicit' if 'forest_grid_coordinate_reference' in c else 'default')),
                                                **detected})
                 else:
                     ds=gdal.Open(str(path))
