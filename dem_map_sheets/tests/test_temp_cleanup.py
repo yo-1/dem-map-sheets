@@ -208,7 +208,6 @@ class RunProcessEnvironmentTests(unittest.TestCase):
     repointed at the PDAL installation by run_process itself)."""
 
     def test_python_env_vars_are_stripped_from_child(self):
-        import json
         import sys
         from unittest import mock
         from dem_map_sheets.engine.point_inputs import run_process

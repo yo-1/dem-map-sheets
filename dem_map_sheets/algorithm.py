@@ -45,31 +45,31 @@ class DEMMapSheetsAlgorithm(QgsProcessingAlgorithm):
             'レーザ点群（LAS・LAZ・COPC）',
             '森林航空レーザ成果（LEM・CSV格子・TIFF・GeoTIFF・ZIP）'],defaultValue=0))
         self.addParameter(QgsProcessingParameterMultipleLayers('FILES','入力ファイル（複数選択、フォルダー指定時は省略可）',
-            QgsProcessing.TypeFile, optional=True))
+            QgsProcessing.SourceType.TypeFile, optional=True))
         self.addParameter(QgsProcessingParameterFile('INPUT_FOLDER','入力フォルダー（省略可）',
-            behavior=QgsProcessingParameterFile.Folder, optional=True))
+            behavior=QgsProcessingParameterFile.Behavior.Folder, optional=True))
         self.addParameter(QgsProcessingParameterBoolean('RECURSIVE','サブフォルダーも検索する',True))
         self.addParameter(QgsProcessingParameterCrs('INPUT_CRS','入力CRS（テキスト・LEM・非GeoTIFFでは必須）',optional=True))
         output_crs = QgsProcessingParameterCrs('CRS','出力の平面直角座標系',optional=False)
         output_crs.setHelp('必須です。出力の平面直角座標系（例：EPSG:6677）を選択してください。未設定では処理を開始できません。')
         self.addParameter(output_crs)
         self.addParameter(QgsProcessingParameterNumber('CELL','出力セルサイズ（m）',
-            QgsProcessingParameterNumber.Double,1.0,minValue=0.01,maxValue=100.0))
+            QgsProcessingParameterNumber.Type.Double,1.0,minValue=0.01,maxValue=100.0))
         self.addParameter(QgsProcessingParameterEnum('VERTICAL_MODE','入力標高の基準（記録用・変換は行いません）',
             ['不明・未確認','測地成果2011（標高）','測地成果2024（標高）','検証用仮想標高','その他（下欄に入力）'],defaultValue=0))
         self.addParameter(QgsProcessingParameterString('VERTICAL','標高基準の追加入力（選択より優先）',defaultValue='',optional=True))
         self.addParameter(QgsProcessingParameterNumber('NODATA','入力NoData値（空欄は入力定義を使用）',
-            QgsProcessingParameterNumber.Double, optional=True))
+            QgsProcessingParameterNumber.Type.Double, optional=True))
         self.addParameter(QgsProcessingParameterEnum('MERGE_PRIORITY','重複時の優先順',
             ['後に並ぶ入力を優先','先に並ぶ入力を優先','自動判定（計測年度→精度→グラウンド点密度→2500図郭充足率）'],defaultValue=2))
         self.addParameter(QgsProcessingParameterFile('PRIORITY_METADATA','自動優先用メタデータCSV/JSON（任意）',
             fileFilter='CSV/JSON (*.csv *.json)', optional=True))
         self.addParameter(QgsProcessingParameterNumber('PRIORITY_MAX_SHEETS','自動優先：処理する2500図郭数の上限',
-            QgsProcessingParameterNumber.Integer,100000,minValue=1,maxValue=1000000))
+            QgsProcessingParameterNumber.Type.Integer,100000,minValue=1,maxValue=1000000))
         self.addParameter(QgsProcessingParameterBoolean('TERRAINRGB','TerrainRGB XYZタイルを生成する',True))
-        self.addParameter(QgsProcessingParameterNumber('XYZ_MIN','XYZ最小ズーム',QgsProcessingParameterNumber.Integer,2,minValue=0,maxValue=24))
-        self.addParameter(QgsProcessingParameterNumber('XYZ_MAX','XYZ最大ズーム',QgsProcessingParameterNumber.Integer,18,minValue=0,maxValue=24))
-        self.addParameter(QgsProcessingParameterNumber('XYZ_LIMIT','XYZ候補枚数上限',QgsProcessingParameterNumber.Integer,1000000,minValue=1))
+        self.addParameter(QgsProcessingParameterNumber('XYZ_MIN','XYZ最小ズーム',QgsProcessingParameterNumber.Type.Integer,2,minValue=0,maxValue=24))
+        self.addParameter(QgsProcessingParameterNumber('XYZ_MAX','XYZ最大ズーム',QgsProcessingParameterNumber.Type.Integer,18,minValue=0,maxValue=24))
+        self.addParameter(QgsProcessingParameterNumber('XYZ_LIMIT','XYZ候補枚数上限',QgsProcessingParameterNumber.Type.Integer,1000000,minValue=1))
         self.addParameter(QgsProcessingParameterEnum('LIDAR_MODE','LAS/LAZ：地表面の取り出し方',
             ['分類済み（指定分類コードを抽出）','地表面点のみのデータ','自動分類（SMRF）'],defaultValue=0))
         self.addParameter(QgsProcessingParameterString('GROUND_CLASSES','LAS/LAZ：地表面分類コード',defaultValue='2'))
@@ -77,18 +77,18 @@ class DEMMapSheetsAlgorithm(QgsProcessingAlgorithm):
         self.addParameter(QgsProcessingParameterEnum('POINT_METHOD','点群DEM補間',
             ['IDW','平均','最低値'],defaultValue=0))
         self.addParameter(QgsProcessingParameterNumber('POINT_RADIUS','点群DEM補間半径（m）',
-            QgsProcessingParameterNumber.Double,2.0,minValue=0.01,maxValue=1000))
+            QgsProcessingParameterNumber.Type.Double,2.0,minValue=0.01,maxValue=1000))
         self.addParameter(QgsProcessingParameterEnum('TEXT_MODE','標高テキストの並び',
             ['規則格子','不規則点（PDAL補間）'],defaultValue=0))
         self.addParameter(QgsProcessingParameterEnum('TEXT_DELIMITER','区切り文字',
             ['カンマ','タブ','空白','セミコロン'],defaultValue=0))
         self.addParameter(QgsProcessingParameterString('TEXT_ENCODING','文字コード',defaultValue='utf-8-sig'))
-        self.addParameter(QgsProcessingParameterNumber('TEXT_SKIP','読み飛ばし行数',QgsProcessingParameterNumber.Integer,1,minValue=0))
+        self.addParameter(QgsProcessingParameterNumber('TEXT_SKIP','読み飛ばし行数',QgsProcessingParameterNumber.Type.Integer,1,minValue=0))
         self.addParameter(QgsProcessingParameterString('TEXT_COLUMNS','座標1・座標2・標高の列番号',defaultValue='1,2,3'))
         self.addParameter(QgsProcessingParameterEnum('TEXT_AXES','座標列の順序',
             ['東,北（GIS X,Y）','北,東（測量 X,Y）'],defaultValue=0))
         self.addParameter(QgsProcessingParameterNumber('TEXT_CELL','規則格子の入力間隔（m）',
-            QgsProcessingParameterNumber.Double,1.0,minValue=0.01))
+            QgsProcessingParameterNumber.Type.Double,1.0,minValue=0.01))
         self.addParameter(QgsProcessingParameterEnum('FOREST_AXES','森林航空レーザCSVの座標順',
             ['北,東（測量X,Y）','東,北（GIS X,Y）'],defaultValue=0))
         self.addParameter(QgsProcessingParameterString('FOREST_CELL','森林CSV格子間隔（autoまたはm）',defaultValue='auto'))
@@ -96,7 +96,7 @@ class DEMMapSheetsAlgorithm(QgsProcessingAlgorithm):
             ['指定なし（既定：セル中心）','center（セル中心）','upper_left（セル左上角）'],defaultValue=0))
         self.addParameter(QgsProcessingParameterString('LEM_SCALE','LEM座標倍率（auto推奨）',defaultValue='auto'))
         self.addParameter(QgsProcessingParameterNumber('FOREST_NODATA','森林成果の既定NoData',
-            QgsProcessingParameterNumber.Double,-9999.0))
+            QgsProcessingParameterNumber.Type.Double,-9999.0))
         self.addParameter(QgsProcessingParameterBoolean('SKIP_INVALID','読み込めない入力ラスターを警告してスキップする',False))
         self.addParameter(QgsProcessingParameterBoolean('KEEP_WORK','中間変換ファイルを残す',False))
         self.addParameter(QgsProcessingParameterFolderDestination('OUTPUT','出力先の親フォルダー'))
@@ -196,7 +196,7 @@ class DEMMapSheetsAlgorithm(QgsProcessingAlgorithm):
                 try:
                     QgsMessageLog.logMessage(
                         f'失敗記録を run.json へ保存できませんでした: {record_exc}',
-                        'DEM Map Sheets', Qgis.Warning)
+                        'DEM Map Sheets', Qgis.MessageLevel.Warning)
                 except Exception:
                     # The message log itself failed; stderr is the
                     # last sink so this is never completely silent.

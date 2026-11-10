@@ -10,7 +10,7 @@ from .version import VERSION
 
 class _WheelGuard(QObject):
     def eventFilter(self, obj, event):
-        if event.type() == QEvent.Wheel and isinstance(obj, (QAbstractSpinBox, QComboBox)):
+        if event.type() == QEvent.Type.Wheel and isinstance(obj, (QAbstractSpinBox, QComboBox)):
             return True
         return super().eventFilter(obj, event)
 
