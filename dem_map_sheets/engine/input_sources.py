@@ -241,6 +241,18 @@ def validate_input(c):
         raise ValueError('forest_nodata must be null or a finite number')
 
 
+
+def _stat_input_path(path):
+    """Stat Windows long paths using an extended path for metadata checks only."""
+    raw = os.fspath(path)
+    if os.name == 'nt' and len(raw) >= 248 and not raw.startswith('\\\\?\\'):
+        absolute = os.path.abspath(raw)
+        extended = ('\\\\?\\UNC\\' + absolute[2:]
+                    if absolute.startswith('\\\\') else '\\\\?\\' + absolute)
+        return os.stat(extended)
+    return os.stat(raw)
+
+
 def discover(inputs, base_dir, c, feedback=None):
     if not isinstance(inputs,list) or not inputs: raise ValueError('Specify input files or folders')
     files=[]; seen=set(); extensions=EXTENSIONS[c['input_type']]
@@ -248,7 +260,7 @@ def discover(inputs, base_dir, c, feedback=None):
         p=Path(entry).expanduser()
         if not p.is_absolute():p=Path(base_dir)/p
         try:
-            mode = _network_call(f'入力パス確認: {p}', lambda: os.stat(str(p)).st_mode, feedback)
+            mode = _network_call(f'入力パス確認: {p}', lambda: _stat_input_path(p).st_mode, feedback)
             matches = [p]
         except FileNotFoundError:
             mode = None
@@ -263,7 +275,7 @@ def discover(inputs, base_dir, c, feedback=None):
         companion_only=0
         for match in matches:
             match_mode = mode if match == p and mode is not None else _network_call(
-                f'入力属性確認: {match}', lambda match=match: os.stat(str(match)).st_mode, feedback)
+                f'入力属性確認: {match}', lambda match=match: _stat_input_path(match).st_mode, feedback)
             is_directory = stat.S_ISDIR(match_mode)
             if is_directory:
                 items=_scan_directory(match,c['recursive'],extensions,feedback)
