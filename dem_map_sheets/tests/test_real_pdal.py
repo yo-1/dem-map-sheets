@@ -10,7 +10,7 @@ environment-pointcloud.yml.
 """
 import json
 import os
-import subprocess
+import subprocess  # nosec B404: tests invoke the real PDAL binary
 import tempfile
 import unittest
 from pathlib import Path
@@ -30,7 +30,7 @@ def _make_las(pdal, csv_path, las_path):
          'scale_x': 0.001, 'scale_y': 0.001, 'scale_z': 0.001}]}
     spec = Path(las_path).with_suffix('.json')
     spec.write_text(json.dumps(pipeline), encoding='utf-8')
-    result = subprocess.run([pdal, 'pipeline', str(spec)],
+    result = subprocess.run([pdal, 'pipeline', str(spec)],  # nosec B603: argv only; test fixture generation
                             capture_output=True, text=True)
     if result.returncode != 0:
         raise RuntimeError('LAS generation failed: ' + result.stderr[:400])
@@ -146,7 +146,7 @@ class RealPdalTests(unittest.TestCase):
              'scale_x': 0.0000001, 'scale_y': 0.0000001, 'scale_z': 0.001}]}
         spec = self.root / 'tokyo.json'
         spec.write_text(json.dumps(pipeline), encoding='utf-8')
-        result = subprocess.run([PDAL, 'pipeline', str(spec)],
+        result = subprocess.run([PDAL, 'pipeline', str(spec)],  # nosec B603: argv only; test fixture generation
                                 capture_output=True, text=True)
         self.assertEqual(result.returncode, 0, result.stderr[:300])
         work = self.root / 'work_geo'

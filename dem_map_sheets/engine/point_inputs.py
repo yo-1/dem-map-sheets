@@ -5,7 +5,7 @@ import os
 from pathlib import Path
 import re
 import shutil
-import subprocess
+import subprocess  # nosec B404: PDAL CLI requires an external process
 import time
 try:
     from .input_sources import cancelled, say, crs_of, text_rows, NODATA
@@ -42,7 +42,7 @@ def run_process(exe,args,log,feedback=None,json_output=False):
     env.pop('PYTHONHOME',None);env.pop('PYTHONPATH',None)
     with open(log,'wb') as stdout,open(str(log)+'.stderr','wb') as stderr:
         process=subprocess.Popen([exe,*args],stdout=stdout,stderr=stderr,stdin=subprocess.DEVNULL,
-            shell=False,env=env,creationflags=getattr(subprocess,'CREATE_NO_WINDOW',0))
+            shell=False,env=env,creationflags=getattr(subprocess,'CREATE_NO_WINDOW',0))  # nosec B603: argv only; user-selected PDAL binary
         try:
             while process.poll() is None:
                 cancelled(feedback)

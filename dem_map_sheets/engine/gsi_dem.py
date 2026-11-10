@@ -2,7 +2,7 @@
 import codecs
 import io
 import re
-import xml.etree.ElementTree as ET
+import xml.etree.ElementTree as ET  # nosec B405: DTD/entities rejected below
 import numpy as np
 
 NODATA = -999999.0
@@ -90,7 +90,7 @@ def parse_dem(data, max_pixels=25000000, source_override='', feedback=None):
         raise ValueError('GSI XML too large or contains a DTD/entity declaration')
     text = re.sub(r'encoding=[\"\x27][^\"\x27]+[\"\x27]', 'encoding="UTF-8"', text, count=1, flags=re.I)
     try:
-        root = ET.fromstring(text)
+        root = ET.fromstring(text)  # nosec B314: bounded, DTD-free XML
     except ET.ParseError as exc:
         raise ValueError('GSI XML parse error: ' + str(exc)) from exc
     dems = [e for e in root.iter() if local(e.tag) == 'DEM']
