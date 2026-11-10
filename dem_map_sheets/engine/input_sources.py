@@ -25,6 +25,7 @@ DEFAULTS = dict(input_type='raster', recursive=True, normalize_rasters=False,
     text_mode='grid', text_grid_cell=1.0, point_method='idw', point_radius=2.0,
     lidar_mode='classified', ground_classes=[2], pdal_path='', point_tile_size=512,
     forest_axis_order='north_east', forest_grid_cell='auto',
+    forest_grid_coordinate_reference='center',
     forest_lem_coordinate_scale='auto', forest_nodata=-9999.0,
     max_points_auto=10000000, max_input_pixels=25000000, max_input_files=100000,
     smrf_cell=1.0, smrf_slope=0.15, smrf_threshold=0.5, smrf_scalar=1.25, smrf_window=18.0)
@@ -233,6 +234,8 @@ def validate_input(c):
         try: scale=float(c['forest_lem_coordinate_scale'])
         except (TypeError,ValueError) as exc: raise ValueError('forest_lem_coordinate_scale must be auto or positive') from exc
         if not math.isfinite(scale) or scale<=0: raise ValueError('forest_lem_coordinate_scale must be auto or positive')
+    if c.get('forest_grid_coordinate_reference','center') not in ('center','upper_left'):
+        raise ValueError('forest_grid_coordinate_reference は center（セル中心）または upper_left（セル左上角）を指定してください')
     if c['forest_grid_cell'] != 'auto':
         try: grid_cell=float(c['forest_grid_cell'])
         except (TypeError,ValueError) as exc: raise ValueError('forest_grid_cell must be auto or positive（森林格子セルは auto または正の値を指定してください）') from exc
@@ -411,7 +414,11 @@ def text_grid(path,dest,c,gdal,osr,feedback=None):
             if a[iy,ix]!=NODATA and not np.isclose(a[iy,ix],z,rtol=0,atol=1e-4):
                 raise ValueError('Conflicting elevations at duplicate text coordinates')
             a[iy,ix]=z
-        a.flush();raster_write(dest,a,(xmin-step/2,step,0,ymax+step/2,0,-step),crs,gdal)
+        reference=c.get('grid_coordinate_reference','center')
+        if reference not in ('center','upper_left'):
+            raise ValueError('grid_coordinate_reference must be center or upper_left')
+        origin=(xmin-step/2,ymax+step/2) if reference=='center' else (xmin,ymax)
+        a.flush();raster_write(dest,a,(origin[0],step,0,origin[1],0,-step),crs,gdal)
     finally:
         del a;backing.unlink(missing_ok=True)
     return count
@@ -514,7 +521,8 @@ def prepare_inputs(c,work,gdal,osr,feedback=None):
                         grid_cell=(infer_grid_cell(path,{**c,**detected,'source_nodata':c['forest_nodata']},feedback)
                                    if c['forest_grid_cell']=='auto' else float(c['forest_grid_cell']))
                         source={**c,**detected,'source_nodata':c['forest_nodata'],
-                                'text_grid_cell':grid_cell}
+                                'text_grid_cell':grid_cell,
+                                'grid_coordinate_reference':c.get('forest_grid_coordinate_reference','center')}
                         raw=work/f'forest_grid_{ordinal:06d}.tif'
                         count=text_grid(path,raw,source,gdal,osr,feedback)
                     except ValueError as exc:
@@ -528,7 +536,10 @@ def prepare_inputs(c,work,gdal,osr,feedback=None):
                             feedback.pushWarning(f'入力を無視: {path} ({exc})')
                         ordinal-=1;continue
                     report['detected'].append({'path':str(path),'kind':'xyz_grid','points':count,
-                                               'grid_cell':grid_cell,**detected})
+                                               'grid_cell':grid_cell,
+                                               'coordinate_reference':source['grid_coordinate_reference'],
+                                               'coordinate_reference_source':'explicit_configuration' if source['grid_coordinate_reference']!='center' else 'default_center_unverified',
+                                               **detected})
                 else:
                     ds=gdal.Open(str(path))
                     if ds is None: raise ValueError('Cannot open forestry TIFF: '+str(path))
