@@ -1,8 +1,8 @@
 """QGIS GUI integration. Copyright (C) 2026 Yoichi Wada. GPL-3.0-only."""
 from pathlib import Path
-from qgis.PyQt.QtGui import QIcon
+from qgis.PyQt.QtGui import QAction, QIcon
 from qgis.PyQt.QtCore import QEvent, QObject, QTimer
-from qgis.PyQt.QtWidgets import QAction, QApplication, QAbstractSpinBox, QComboBox
+from qgis.PyQt.QtWidgets import QApplication, QAbstractSpinBox, QComboBox
 from qgis.core import QgsApplication
 from .provider import DEMMapSheetsProvider
 from .version import VERSION
