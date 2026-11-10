@@ -437,7 +437,7 @@ class ForestLemTests(GdalCase):
 
     def test_lem_needs_input_crs(self):
         lem, _ = standard_lem(self.root)
-        with self.assertRaisesRegex(ValueError, 'requires input_crs'):
+        with self.assertRaisesRegex(ValueError, '入力CRS'):
             self.prepare('forest', [lem], input_crs='')
 
     def test_lem_pixel_limit(self):
@@ -504,7 +504,7 @@ class ForestXyzGridTests(GdalCase):
         self.assertEqual(report['detected'][0]['grid_cell'], 5.0)
 
     def test_grid_needs_input_crs(self):
-        with self.assertRaisesRegex(ValueError, 'requires input_crs'):
+        with self.assertRaisesRegex(ValueError, '入力CRS'):
             self.prepare('forest', [self.grid()], input_crs='', forest_axis_order='east_north')
 
     def test_unequal_xy_spacing_is_refused(self):
