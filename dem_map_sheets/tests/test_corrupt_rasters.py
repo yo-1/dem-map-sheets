@@ -4,7 +4,6 @@ variants must stop explicitly by default with Japanese guidance
 are recorded in the input report with at most 20 individual warnings
 plus one summary line."""
 import json
-import random
 import tempfile
 import unittest
 from pathlib import Path
@@ -49,8 +48,7 @@ def _valid_bytes(folder):
 
 
 def _variants(base):
-    rng = random.Random(20261110)
-    random_bytes = bytes(rng.randrange(256) for _ in range(512))
+    random_bytes = bytes((i * 37 + 11) % 256 for i in range(512))
 
     def patch(data, offset, chunk):
         return data[:offset] + chunk + data[offset + len(chunk):]

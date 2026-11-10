@@ -5,6 +5,7 @@ import json
 import math
 import os
 import shutil
+import sys
 import numpy as np
 from .input_sources import DEFAULTS as INPUT_DEFAULTS, _invalid_raster_reason, crs_of, discover, prepare_inputs, proj_epsg_version, validate_input, NODATA
 from .map_sheets import intersecting_sheets, dimensions
@@ -113,8 +114,10 @@ def _record_failure(out,work,config,exc,feedback):
             'work_removed_bytes':removed,'work_retained_bytes':retained,
             'outputs_present':outputs_present}
         (Path(out)/'run.json').write_text(json.dumps(record,ensure_ascii=False,indent=2),encoding='utf-8')
-    except Exception:
-        pass
+    except Exception as record_exc:
+        # Recording must never mask the original error; leave a
+        # trace on stderr and let the original exception propagate.
+        print(f'run.json への失敗記録に失敗しました: {record_exc}',file=sys.stderr)
 
 
 def merge_geotiffs(inputs,dest,gdal,first_wins=False,output_bounds=None,width=None,height=None):

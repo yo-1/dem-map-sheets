@@ -1,6 +1,7 @@
 from datetime import datetime
 import json
 from pathlib import Path
+import sys
 import uuid
 from .version import VERSION
 from qgis.core import (
@@ -197,5 +198,8 @@ class DEMMapSheetsAlgorithm(QgsProcessingAlgorithm):
                         f'失敗記録を run.json へ保存できませんでした: {record_exc}',
                         'DEM Map Sheets', Qgis.Warning)
                 except Exception:
-                    pass
+                    # The message log itself failed; stderr is the
+                    # last sink so this is never completely silent.
+                    print(f'失敗記録を run.json へ保存できませんでした: {record_exc}',
+                          file=sys.stderr)
             raise QgsProcessingException(str(exc)) from exc
