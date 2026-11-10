@@ -12,7 +12,7 @@ from pathlib import Path
 import numpy as np
 
 sys.path.insert(0, str(Path(__file__).resolve().parent))
-from input_fixtures import GSI_GOOD_TUPLES, gsi_xml  # noqa: E402
+from input_fixtures import gsi_xml  # noqa: E402
 
 from dem_map_sheets.engine.gsi_dem import NODATA, parse_dem, traversal_indices  # noqa: E402
 

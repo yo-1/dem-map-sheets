@@ -6,7 +6,6 @@ on success and on failure."""
 import tempfile
 import unittest
 from pathlib import Path
-from unittest import mock
 
 import numpy as np
 from osgeo import gdal, osr

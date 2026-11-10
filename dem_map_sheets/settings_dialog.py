@@ -12,7 +12,7 @@ def portable(value):
     if isinstance(value, QgsCoordinateReferenceSystem):
         return (value.authid() or value.toWkt()) if value.isValid() else ''
     if isinstance(value, QgsProperty):
-        if value.propertyType() == QgsProperty.StaticProperty:
+        if value.propertyType() == QgsProperty.Type.StaticProperty:
             return portable(value.staticValue())
         raise ValueError('動的な式を含む設定は保存できません。固定値を指定してください。')
     if isinstance(value, dict):
@@ -28,7 +28,7 @@ class SettingsDialog(AlgorithmDialog):
         super().__init__(alg, parent=parent)
         self.profile_buttons = []
         for label, callback in [('設定を保存', self.save_settings), ('設定を読み込む', self.load_settings)]:
-            button = self.buttonBox().addButton(label, QDialogButtonBox.ActionRole)
+            button = self.buttonBox().addButton(label, QDialogButtonBox.ButtonRole.ActionRole)
             button.clicked.connect(callback)
             self.profile_buttons.append(button)
 
