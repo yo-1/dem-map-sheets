@@ -35,7 +35,7 @@ TerrainRGB は次式です。
 
 ## ライセンス
 
-GNU GPL v3.0 only. Copyright (C) 2026 Yoichi Wada.
+GNU GPL v3.0 only. Copyright (C) 2026 yo-1.
 
 ## 重複DEMの自動優先選定（v0.2.0）
 

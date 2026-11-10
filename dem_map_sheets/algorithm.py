@@ -34,7 +34,7 @@ class DEMMapSheetsAlgorithm(QgsProcessingAlgorithm):
             '森林航空レーザ成果ではLEM+メタデータCSV/TXT、規則格子CSV/XYZ、TIFF+TFW、GeoTIFF、ZIPを扱います。\n'
             'LAS/LAZ/COPCのDEM化にはPDALが必要です。分類済み点群は地表面分類コード2を既定とします。\n'
             'XYZは森林情報オープンデータ標準仕様のTerrainRGB式 H=-10000+(R*65536+G*256+B)*0.1 を使用します。\n'
-            'Copyright (C) 2026 Yoichi Wada. Forked from CS Map Sheets. GNU GPL v3.0 only.'
+            'Copyright (C) 2026 yo-1. Forked from CS Map Sheets. GNU GPL v3.0 only.'
         )
 
     def initAlgorithm(self, config=None):
