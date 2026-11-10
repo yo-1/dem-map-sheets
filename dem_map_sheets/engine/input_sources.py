@@ -61,6 +61,49 @@ def explicit_file_parameter(value):
     return result
 
 
+def epsg_dataset_version(db_path):
+    """EPSG dataset version recorded in a proj.db (e.g. 'v13.102'),
+    or None when the database or the value is unavailable."""
+    try:
+        import sqlite3
+        con = sqlite3.connect('file:' + str(db_path) + '?mode=ro', uri=True)
+        try:
+            row = con.execute(
+                "SELECT value FROM metadata WHERE key='EPSG.VERSION'").fetchone()
+        finally:
+            con.close()
+        return row[0] if row else None
+    except Exception:
+        return None
+
+
+def proj_epsg_version(osr):
+    """EPSG dataset version of the PROJ data in effect, or None.
+
+    The version lives in proj.db's metadata and the database is
+    located through PROJ's search paths. Any failure (no osr, no
+    database found, unreadable) yields None: callers record the
+    version as unavailable rather than guessing one."""
+    try:
+        candidates = []
+        get_paths = getattr(osr, 'GetPROJSearchPaths', None)
+        if get_paths is not None:
+            candidates.extend(get_paths())
+        for var in ('PROJ_DATA', 'PROJ_LIB'):
+            value = os.environ.get(var)
+            if value:
+                candidates.append(value)
+        for base in candidates:
+            db = Path(base) / 'proj.db'
+            if db.is_file():
+                version = epsg_dataset_version(db)
+                if version:
+                    return version
+        return None
+    except Exception:
+        return None
+
+
 def cancelled(feedback):
     if feedback is not None and feedback.isCanceled():
         raise RuntimeError('Input conversion cancelled; partial outputs are incomplete（処理がキャンセルされました。途中まで生成された出力ファイルは不完全なため、使用しないでください）')
@@ -184,7 +227,7 @@ def validate_input(c):
     for key in ('input_crs','vertical_reference','text_encoding','pdal_path'):
         if not isinstance(c[key],str): raise ValueError(key+' must be text')
     if c['input_type']=='text' and not c['input_crs'].strip():
-        raise ValueError('Text data requires input_crs (source CRS)')
+        raise ValueError('Text data requires input_crs (source CRS)（テキストデータには入力CRS（元の座標系）が必須です。入力データの座標系（例：EPSG:6677）を指定してください）')
     if c['forest_lem_coordinate_scale'] != 'auto':
         try: scale=float(c['forest_lem_coordinate_scale'])
         except (TypeError,ValueError) as exc: raise ValueError('forest_lem_coordinate_scale must be auto or positive') from exc

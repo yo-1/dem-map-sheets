@@ -6,7 +6,7 @@ import math
 import os
 import shutil
 import numpy as np
-from .input_sources import DEFAULTS as INPUT_DEFAULTS, crs_of, discover, prepare_inputs, validate_input, NODATA
+from .input_sources import DEFAULTS as INPUT_DEFAULTS, crs_of, discover, prepare_inputs, proj_epsg_version, validate_input, NODATA
 from .map_sheets import intersecting_sheets, dimensions
 
 
@@ -352,7 +352,55 @@ def _merge_auto(c,groups,out,gdal,osr,feedback=None):
         missing_values='known values outrank unknown values at each criterion',sheet_count=len(written),decisions=decisions)
 
 
+def _source_datum_labels(node,found=None):
+    """Original datum/CRS labels declared by the inputs, collected
+    from the input report (GSI sources record them as original_srs).
+    These are the labels as written in the source data - not names
+    derived from the output CRS - so a run can be traced to the
+    realization its inputs declared."""
+    if found is None:found=set()
+    if isinstance(node,dict):
+        for key,value in node.items():
+            if key=='original_srs' and isinstance(value,str) and value:
+                found.add(value)
+            else:
+                _source_datum_labels(value,found)
+    elif isinstance(node,(list,tuple)):
+        for item in node:_source_datum_labels(item,found)
+    return found
+
+
+def _path_error(exc,output_dir):
+    """Japanese guidance for an OS path failure, or None when the
+    error is not a path problem. A Windows long path surfaces as a
+    bare '[WinError 3]' with no hint which path failed or what to
+    do; the failing path is carried on the exception, so name it,
+    say which side it belongs to (under the output dir, or an
+    input-side path) and give the remedy. The original error text
+    stays in run.json via the failure record."""
+    filename=getattr(exc,'filename',None)
+    if not filename or getattr(exc,'errno',None) not in (2,3,36,206):
+        return None
+    path=str(filename)
+    side='出力先' if path.startswith(str(output_dir)) else '入力側'
+    length=f'パスの長さは{len(path)}文字です。' if len(path)>200 else ''
+    return (f'ファイルのパスにアクセスできませんでした（{side}）。対象: {path}。'
+        f'{length}フォルダーのパスが長すぎるとWindowsでは開けません。'
+        '出力先には短いパスのフォルダーを指定し、入力ファイルも短いパスへ置いてください。'
+        '対象ファイルが存在することも確認してください。'
+        f'（OSエラー{exc.errno}）')
+
+
 def run(config,output_dir,gdal,osr,feedback=None):
+    try:
+        return _run_scoped(config,output_dir,gdal,osr,feedback)
+    except OSError as exc:
+        message=_path_error(exc,output_dir)
+        if message is None:raise
+        raise ValueError(message) from exc
+
+
+def _run_scoped(config,output_dir,gdal,osr,feedback=None):
     # The pipeline relies on GDAL raising exceptions, but enabling
     # them is process-global state (W-13): scope it to this call and
     # restore the caller's setting - QGIS, another plugin, a script -
@@ -425,11 +473,15 @@ def _run(config,output_dir,gdal,osr,feedback=None):
             output_warnings.append('all_nodata_output')
             if feedback is not None and hasattr(feedback,'pushWarning'):
                 feedback.pushWarning(message)
+        datum_labels=sorted(_source_datum_labels(report))
         manifest={'status':'completed','input_type':c['input_type'],'source_count':len(materialized),
             'warnings':output_warnings,
             'source_dems':materialized,'merged_dem':merged,'target_crs':c['target_crs'],'cell_size':c['cell_size'],
             'vertical_reference':c['vertical_reference'],'vertical_conversion':False,'merge_priority':mode,
-            'priority_selection':priority_report,'input_report':report,'output_nodata':NODATA}
+            'priority_selection':priority_report,'input_report':report,'output_nodata':NODATA,
+            'source_datum_label':datum_labels[0] if len(datum_labels)==1 else (datum_labels or None),
+            'proj_epsg_version':proj_epsg_version(osr),
+            'work_retained':'all' if config.get('keep_work') else 'none'}
     except BaseException as exc:
         _record_failure(out,work,config,exc,feedback)
         raise

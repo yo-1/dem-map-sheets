@@ -9,7 +9,7 @@ import numpy as np
 from osgeo import gdal, osr
 
 from dem_map_sheets.engine.dem_pipeline import _merge_auto
-from dem_map_sheets.engine.input_sources import DEFAULTS, discover
+from dem_map_sheets.engine.input_sources import DEFAULTS, discover, validate_input
 
 
 def _cfg(**kw):
@@ -68,3 +68,13 @@ class AutoPriorityMessageTests(unittest.TestCase):
 
 if __name__ == '__main__':
     unittest.main()
+
+
+class InputCrsMessageTests(unittest.TestCase):
+    def test_text_without_input_crs_is_bilingual(self):
+        c = _cfg(input_type='text', input_crs='')
+        with self.assertRaises(ValueError) as ctx:
+            validate_input(c)
+        self.assertIn('requires input_crs', str(ctx.exception))
+        self.assertIn('入力CRS（元の座標系）が必須です', str(ctx.exception))
+        self.assertIn('指定してください', str(ctx.exception))
