@@ -43,7 +43,7 @@ def check_settings():
         return collect
 
     try:
-        require(VERSION == '0.2.1-rc4', 'rc4をインストールしてQGISを再起動してください: ' + VERSION)
+        require(VERSION == '0.2.1', '対象版をインストールしてQGISを再起動してください: ' + VERSION)
         algorithm = QgsApplication.processingRegistry().createAlgorithmById('demmapsheets:create')
         require(algorithm is not None, 'DEM Map Sheetsを有効にしてください。')
         dialog = SettingsDialog(algorithm)
