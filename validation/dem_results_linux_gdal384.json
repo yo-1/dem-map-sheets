@@ -1,0 +1,55 @@
+{
+  "python": "3.12.14",
+  "platform": "Linux-6.18.44-x86_64-with-glibc2.39",
+  "gdal": "3.8.4",
+  "checks": [
+    {
+      "case": "year",
+      "status": "passed",
+      "output": "/workspace/scratch/23fb0b6bd607/dem_validation_20261008/GitHub_source/validation/results/8d15ea66/year",
+      "tiles": 6
+    },
+    {
+      "case": "accuracy",
+      "status": "passed",
+      "output": "/workspace/scratch/23fb0b6bd607/dem_validation_20261008/GitHub_source/validation/results/8d15ea66/accuracy",
+      "tiles": 6
+    },
+    {
+      "case": "density",
+      "status": "passed",
+      "output": "/workspace/scratch/23fb0b6bd607/dem_validation_20261008/GitHub_source/validation/results/8d15ea66/density",
+      "tiles": 6
+    },
+    {
+      "case": "coverage",
+      "status": "passed",
+      "output": "/workspace/scratch/23fb0b6bd607/dem_validation_20261008/GitHub_source/validation/results/8d15ea66/coverage",
+      "tiles": 6
+    },
+    {
+      "case": "first",
+      "status": "passed",
+      "output": "/workspace/scratch/23fb0b6bd607/dem_validation_20261008/GitHub_source/validation/results/8d15ea66/first",
+      "tiles": 6
+    },
+    {
+      "case": "last",
+      "status": "passed",
+      "output": "/workspace/scratch/23fb0b6bd607/dem_validation_20261008/GitHub_source/validation/results/8d15ea66/last",
+      "tiles": 6
+    },
+    {
+      "case": "unknown",
+      "status": "passed",
+      "output": "/workspace/scratch/23fb0b6bd607/dem_validation_20261008/GitHub_source/validation/results/8d15ea66/unknown",
+      "tiles": 6
+    },
+    {
+      "case": "json",
+      "status": "passed",
+      "output": "/workspace/scratch/23fb0b6bd607/dem_validation_20261008/GitHub_source/validation/results/8d15ea66/json",
+      "tiles": 6
+    }
+  ]
+}

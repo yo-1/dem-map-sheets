@@ -1,0 +1,378 @@
+# muse/pre-release-fixes 570ed21449a2dd5ccef3c09cc9d48237ae37e054 + these tests (not committed there)
+test_failed_merge_removes_partial_destination (test_failure_cleanup.MergeFailureTests.test_failed_merge_removes_partial_destination) ... ERROR 1: Can't open /tmp/tmpuaqqzmk9/missing.tif.
+ok
+test_prune_keeps_only_diagnostics (test_failure_cleanup.PruneTests.test_prune_keeps_only_diagnostics) ... ok
+test_prune_missing_directory_is_zero (test_failure_cleanup.PruneTests.test_prune_missing_directory_is_zero) ... ok
+test_failure_records_and_prunes (test_failure_cleanup.RunFailureTests.test_failure_records_and_prunes) ... ok
+test_failure_with_keep_work_retains_everything (test_failure_cleanup.RunFailureTests.test_failure_with_keep_work_retains_everything) ... ok
+test_success_removes_work_and_records_completed (test_failure_cleanup.RunFailureTests.test_success_removes_work_and_records_completed) ... ok
+test_gsi_common_order (test_gsi.GsiTraversalTests.test_gsi_common_order) ... ok
+test_doctype_in_utf8_is_rejected (test_gsi_safety.GsiEncodingGuardTests.test_doctype_in_utf8_is_rejected) ... ok
+test_undecodable_bytes_raise_value_error (test_gsi_safety.GsiEncodingGuardTests.test_undecodable_bytes_raise_value_error) ... ok
+test_unlisted_encoding_is_rejected (test_gsi_safety.GsiEncodingGuardTests.test_unlisted_encoding_is_rejected) ... ok
+test_utf16_declaration_is_rejected (test_gsi_safety.GsiEncodingGuardTests.test_utf16_declaration_is_rejected) ... ok
+test_utf16_with_doctype_is_rejected (test_gsi_safety.GsiEncodingGuardTests.test_utf16_with_doctype_is_rejected) ... ok
+test_valid_shift_jis_declaration_parses (test_gsi_safety.GsiEncodingGuardTests.test_valid_shift_jis_declaration_parses) ... ok
+test_valid_utf8_parses (test_gsi_safety.GsiEncodingGuardTests.test_valid_utf8_parses) ... ok
+test_huge_grid_is_lazy (test_gsi_safety.TraversalEquivalenceTests.test_huge_grid_is_lazy) ... ok
+test_orders_and_starts_match_reference (test_gsi_safety.TraversalEquivalenceTests.test_orders_and_starts_match_reference) ... ok
+test_start_outside_grid_raises (test_gsi_safety.TraversalEquivalenceTests.test_start_outside_grid_raises) ... ok
+test_csv_wins_over_txt_when_both_exist (test_input_forest_lem.ClassifySourcesTests.test_csv_wins_over_txt_when_both_exist) ... ok
+test_expand_sources_pulls_in_companion_by_stem (test_input_forest_lem.ClassifySourcesTests.test_expand_sources_pulls_in_companion_by_stem) ... ok
+test_lem_pair_grid_and_rasters_are_classified (test_input_forest_lem.ClassifySourcesTests.test_lem_pair_grid_and_rasters_are_classified) ... ok
+test_lem_with_non_metadata_companion_is_rejected (test_input_forest_lem.ClassifySourcesTests.test_lem_with_non_metadata_companion_is_rejected) ... ok
+test_lem_without_metadata_is_rejected (test_input_forest_lem.ClassifySourcesTests.test_lem_without_metadata_is_rejected) ... ok
+test_metadata_without_lem_is_rejected (test_input_forest_lem.ClassifySourcesTests.test_metadata_without_lem_is_rejected) ... ok
+test_nothing_usable (test_input_forest_lem.ClassifySourcesTests.test_nothing_usable) ... ok
+test_sidecars_are_never_primary_inputs (test_input_forest_lem.ClassifySourcesTests.test_sidecars_are_never_primary_inputs) ... ok
+test_probe_reads_only_a_bounded_prefix (test_input_forest_lem.LemMetadataDetectionTests.test_probe_reads_only_a_bounded_prefix) ... ok
+test_probe_recognises_real_metadata_and_rejects_xyz (test_input_forest_lem.LemMetadataDetectionTests.test_probe_recognises_real_metadata_and_rejects_xyz) ... ok
+test_zero_point_counts_are_not_metadata (test_input_forest_lem.LemMetadataDetectionTests.test_zero_point_counts_are_not_metadata) ... ok
+test_blank_lines_between_rows_are_tolerated (test_input_forest_lem.LemReadTests.test_blank_lines_between_rows_are_tolerated) ... ok
+test_cancellation (test_input_forest_lem.LemReadTests.test_cancellation) ... ok
+test_cp932_metadata (test_input_forest_lem.LemReadTests.test_cp932_metadata) ... ok
+test_explicit_scale_overrides_detection (test_input_forest_lem.LemReadTests.test_explicit_scale_overrides_detection) ... ok
+test_extra_rows (test_input_forest_lem.LemReadTests.test_extra_rows) ... ok
+test_inconsistent_bounds_demand_explicit_scale (test_input_forest_lem.LemReadTests.test_inconsistent_bounds_demand_explicit_scale) ... ok
+test_invalid_explicit_scale (test_input_forest_lem.LemReadTests.test_invalid_explicit_scale) ... ok
+test_limit_is_checked_before_the_data_file_is_read (test_input_forest_lem.LemReadTests.test_limit_is_checked_before_the_data_file_is_read) ... ok
+test_metadata_in_meter_units_is_detected (test_input_forest_lem.LemReadTests.test_metadata_in_meter_units_is_detected) ... ok
+test_missing_required_header_field (test_input_forest_lem.LemReadTests.test_missing_required_header_field) ... ok
+test_negative_elevations_and_zero (test_input_forest_lem.LemReadTests.test_negative_elevations_and_zero) ... ok
+test_non_numeric_cell_reports_row_and_column (test_input_forest_lem.LemReadTests.test_non_numeric_cell_reports_row_and_column) ... ok
+test_pixel_limit_boundary (test_input_forest_lem.LemReadTests.test_pixel_limit_boundary) ... ok
+test_record_number_mismatch (test_input_forest_lem.LemReadTests.test_record_number_mismatch) ... ok
+test_row_count_mismatch (test_input_forest_lem.LemReadTests.test_row_count_mismatch) ... ok
+test_truncated_row (test_input_forest_lem.LemReadTests.test_truncated_row) ... ok
+test_txt_metadata_companion (test_input_forest_lem.LemReadTests.test_txt_metadata_companion) ... ok
+test_undecodable_data_file (test_input_forest_lem.LemReadTests.test_undecodable_data_file) ... ok
+test_values_nodata_codes_and_georeference (test_input_forest_lem.LemReadTests.test_values_nodata_codes_and_georeference) ... ok
+test_corrupt_zip (test_input_forest_lem.ZipSafetyTests.test_corrupt_zip) ... ok
+test_destination_must_be_new (test_input_forest_lem.ZipSafetyTests.test_destination_must_be_new) ... ok
+test_expand_sources_names_extraction_folders_per_archive (test_input_forest_lem.ZipSafetyTests.test_expand_sources_names_extraction_folders_per_archive) ... ok
+test_japanese_member_names (test_input_forest_lem.ZipSafetyTests.test_japanese_member_names) ... ok
+test_member_size_limit (test_input_forest_lem.ZipSafetyTests.test_member_size_limit) ... ok
+test_member_size_limit_boundary_is_inclusive (test_input_forest_lem.ZipSafetyTests.test_member_size_limit_boundary_is_inclusive) ... ok
+test_supported_members_and_sidecars_are_extracted_unsupported_skipped (test_input_forest_lem.ZipSafetyTests.test_supported_members_and_sidecars_are_extracted_unsupported_skipped) ... ok
+test_total_size_limit (test_input_forest_lem.ZipSafetyTests.test_total_size_limit) ... ok
+test_truncated_zip (test_input_forest_lem.ZipSafetyTests.test_truncated_zip) ... ok
+test_unsafe_member_paths_are_refused_and_nothing_escapes (test_input_forest_lem.ZipSafetyTests.test_unsafe_member_paths_are_refused_and_nothing_escapes) ... ok
+test_unsupported_members_do_not_count_toward_limits (test_input_forest_lem.ZipSafetyTests.test_unsupported_members_do_not_count_toward_limits) ... ok
+test_zip_without_supported_members (test_input_forest_lem.ZipSafetyTests.test_zip_without_supported_members) ... ok
+test_accepted_horizontal_crs (test_input_gdal_formats.CrsRecognitionTests.test_accepted_horizontal_crs) ... ok
+test_axis_mapping_is_x_east_y_north_even_for_authority_axis_order_crs (test_input_gdal_formats.CrsRecognitionTests.test_axis_mapping_is_x_east_y_north_even_for_authority_axis_order_crs) ... ok
+test_crs_message_names_the_problem (test_input_gdal_formats.CrsRecognitionTests.test_crs_message_names_the_problem) ... ok
+test_rejected_crs (test_input_gdal_formats.CrsRecognitionTests.test_rejected_crs) ... ok
+test_corrupt_lem_data_is_rejected_with_a_row_number (test_input_gdal_formats.ForestLemTests.test_corrupt_lem_data_is_rejected_with_a_row_number) ... Forest DEM (lem): /tmp/tmponxnbs27/bad.lem
+ok
+test_lem_end_to_end (test_input_gdal_formats.ForestLemTests.test_lem_end_to_end) ... Forest DEM (lem): /tmp/tmpwxcskmyj/ok.lem
+ok
+test_lem_needs_input_crs (test_input_gdal_formats.ForestLemTests.test_lem_needs_input_crs) ... Forest DEM (lem): /tmp/tmpa1le3d3h/ok.lem
+ok
+test_lem_pixel_limit (test_input_gdal_formats.ForestLemTests.test_lem_pixel_limit) ... Forest DEM (lem): /tmp/tmps79ze0rg/ok.lem
+ok
+test_lem_with_txt_metadata_and_cp932 (test_input_gdal_formats.ForestLemTests.test_lem_with_txt_metadata_and_cp932) ... Forest DEM (lem): /tmp/tmpua2tafuf/ok.lem
+ok
+test_lem_without_metadata (test_input_gdal_formats.ForestLemTests.test_lem_without_metadata) ... ok
+test_two_lem_sheets_are_mosaicked_by_run (test_input_gdal_formats.ForestLemTests.test_two_lem_sheets_are_mosaicked_by_run) ... Forest DEM (lem): /tmp/tmp5bnie8hu/a.lem
+ok
+test_all_inputs_ignored_stops_with_a_clear_error (test_input_gdal_formats.ForestXyzGridTests.test_all_inputs_ignored_stops_with_a_clear_error) ... Forest DEM (grid): /tmp/tmp5of0f2re/notes.txt
+ok
+test_axis_order_north_east (test_input_gdal_formats.ForestXyzGridTests.test_axis_order_north_east) ... Forest DEM (grid): /tmp/tmpznzra7b6/ne.csv
+ok
+test_explicit_grid_cell_overrides_inference (test_input_gdal_formats.ForestXyzGridTests.test_explicit_grid_cell_overrides_inference) ... Forest DEM (grid): /tmp/tmpmt9bo_wh/g.csv
+ok
+test_forest_nodata_marks_holes (test_input_gdal_formats.ForestXyzGridTests.test_forest_nodata_marks_holes) ... Forest DEM (grid): /tmp/tmp9uwj_dxt/nd.csv
+ok
+test_grid_needs_input_crs (test_input_gdal_formats.ForestXyzGridTests.test_grid_needs_input_crs) ... Forest DEM (grid): /tmp/tmpds3gaoq1/g.csv
+ok
+test_grid_with_cell_centre_coordinates_keeps_exact_values (test_input_gdal_formats.ForestXyzGridTests.test_grid_with_cell_centre_coordinates_keeps_exact_values) ... Forest DEM (grid): /tmp/tmppp8wy5sk/g.csv
+ok
+test_non_dem_text_is_ignored_and_recorded_when_other_inputs_exist (test_input_gdal_formats.ForestXyzGridTests.test_non_dem_text_is_ignored_and_recorded_when_other_inputs_exist) ... Forest DEM (grid): /tmp/tmps5x6ueve/notes.txt
+ok
+test_unequal_xy_spacing_is_refused (test_input_gdal_formats.ForestXyzGridTests.test_unequal_xy_spacing_is_refused) ... Forest DEM (grid): /tmp/tmpn9bdlk4z/uneven.csv
+ok
+test_corrupt_zip (test_input_gdal_formats.ForestZipTests.test_corrupt_zip) ... ok
+test_traversal_entry_aborts_before_any_conversion (test_input_gdal_formats.ForestZipTests.test_traversal_entry_aborts_before_any_conversion) ... ok
+test_zip_with_tiff_world_file_and_lem_is_read_without_touching_outside_paths (test_input_gdal_formats.ForestZipTests.test_zip_with_tiff_world_file_and_lem_is_read_without_touching_outside_paths) ... Forest DEM (lem): /tmp/tmp6fj62gfe/work1/archive_000001_c142144978/成果/sheet.lem
+ok
+test_zip_without_dem_members (test_input_gdal_formats.ForestZipTests.test_zip_without_dem_members) ... ok
+test_ascii_grid_is_accepted_as_raster (test_input_gdal_formats.GeoTiffTests.test_ascii_grid_is_accepted_as_raster) ... Input: /tmp/tmpg9a34sj6/g.asc
+ok
+test_failed_preparation_is_recorded_in_the_input_report (test_input_gdal_formats.GeoTiffTests.test_failed_preparation_is_recorded_in_the_input_report) ... Input: /tmp/tmpm2n5wt9z/junk.tif
+ok
+test_geotiff_values_nodata_and_georeference_are_preserved (test_input_gdal_formats.GeoTiffTests.test_geotiff_values_nodata_and_georeference_are_preserved) ... Input: /tmp/tmpnhn17k0_/a.tif
+ok
+test_geotiff_without_crs_needs_input_crs (test_input_gdal_formats.GeoTiffTests.test_geotiff_without_crs_needs_input_crs) ... Input: /tmp/tmp8pg0ge7b/nocrs.tif
+ok
+test_invalid_or_compound_input_crs (test_input_gdal_formats.GeoTiffTests.test_invalid_or_compound_input_crs) ... Input: /tmp/tmpt82q55q0/a.tif
+ok
+test_multiband_scaled_unreadable_and_missing_inputs (test_input_gdal_formats.GeoTiffTests.test_multiband_scaled_unreadable_and_missing_inputs) ... Input: /tmp/tmphv8xdv0l/m.tif
+ok
+test_nonfinite_pixels_never_become_numeric_elevations (test_input_gdal_formats.GeoTiffTests.test_nonfinite_pixels_never_become_numeric_elevations) ... Input: /tmp/tmpbi_c6p5u/nf.tif
+ok
+test_reprojection_lands_where_an_independent_transform_says (test_input_gdal_formats.GeoTiffTests.test_reprojection_lands_where_an_independent_transform_says) ... Input: /tmp/tmpd_7f_3f_/geo.tif
+ok
+test_source_nodata_override_for_rasters_without_a_definition (test_input_gdal_formats.GeoTiffTests.test_source_nodata_override_for_rasters_without_a_definition) ... Input: /tmp/tmpfv0tbmhg/n.tif
+ok
+test_tiff_without_any_georeferencing_is_refused (test_input_gdal_formats.GeoTiffTests.test_tiff_without_any_georeferencing_is_refused) ... Input: /tmp/tmpe8wzinmw/plain.tif
+ok
+test_wrong_input_crs_is_applied_not_second_guessed (test_input_gdal_formats.GeoTiffTests.test_wrong_input_crs_is_applied_not_second_guessed) ... Input: /tmp/tmpucrshgu2/a.tif
+ok
+test_adjacent_sheets_are_mosaicked_by_run (test_input_gdal_formats.GsiEndToEndTests.test_adjacent_sheets_are_mosaicked_by_run) ... Input: /tmp/tmp_jdw5fqt/a.xml
+ok
+test_horizontal_crs_override_must_be_geographic (test_input_gdal_formats.GsiEndToEndTests.test_horizontal_crs_override_must_be_geographic) ... Input: /tmp/tmph1xux84m/a.xml
+ok
+test_metadata_only_xml_has_no_usable_dem (test_input_gdal_formats.GsiEndToEndTests.test_metadata_only_xml_has_no_usable_dem) ... Input: /tmp/tmpegx5cdub/meta.xml
+ok
+test_new_and_old_datum_labels_cannot_be_mixed (test_input_gdal_formats.GsiEndToEndTests.test_new_and_old_datum_labels_cannot_be_mixed) ... Input: /tmp/tmpnqwvrc6f/new.xml
+ok
+test_pixel_limit (test_input_gdal_formats.GsiEndToEndTests.test_pixel_limit) ... Input: /tmp/tmpcv1ln8b6/a.xml
+ok
+test_run_manifest_for_zip_input (test_input_gdal_formats.GsiEndToEndTests.test_run_manifest_for_zip_input) ... Input: /tmp/tmpsm1ngbmt/fg.zip
+ok
+test_xml_end_to_end (test_input_gdal_formats.GsiEndToEndTests.test_xml_end_to_end) ... Input: /tmp/tmppe5t59i5/a.xml
+ok
+test_zip_member_with_dtd_is_rejected (test_input_gdal_formats.GsiEndToEndTests.test_zip_member_with_dtd_is_rejected) ... Input: /tmp/tmpin5cc9yn/e.zip
+ok
+test_zip_members_are_read_in_memory (test_input_gdal_formats.GsiEndToEndTests.test_zip_members_are_read_in_memory) ... Input: /tmp/tmp3g99rvx_/fg.zip
+ok
+test_zip_without_xml_and_corrupt_zip (test_input_gdal_formats.GsiEndToEndTests.test_zip_without_xml_and_corrupt_zip) ... Input: /tmp/tmpdfhngvmv/n.zip
+ok
+test_failure_leaves_a_diagnosable_input_report (test_input_gdal_formats.RunEndToEndTests.test_failure_leaves_a_diagnosable_input_report) ... Input: /tmp/tmp1eiq8g0p/in/bad.csv
+ok
+test_geotiff_folder (test_input_gdal_formats.RunEndToEndTests.test_geotiff_folder) ... Input: /tmp/tmps0tvuq18/in/a.tif
+ok
+test_text_grid_folder (test_input_gdal_formats.RunEndToEndTests.test_text_grid_folder) ... Input: /tmp/tmpmwiesghp/in/g.csv
+ok
+test_tiff_with_world_file_folder_skips_the_companion (test_input_gdal_formats.RunEndToEndTests.test_tiff_with_world_file_folder_skips_the_companion) ... Forest DEM (raster): /tmp/tmpi9oxp9x4/in/a.tif
+ok
+test_cp932_tab_separated_txt (test_input_gdal_formats.TextGridTests.test_cp932_tab_separated_txt) ... ok
+test_duplicate_points_equal_values_are_fine_conflicting_are_not (test_input_gdal_formats.TextGridTests.test_duplicate_points_equal_values_are_fine_conflicting_are_not) ... ok
+test_fractional_cell_size (test_input_gdal_formats.TextGridTests.test_fractional_cell_size) ... ok
+test_grid_requires_a_projected_metre_crs (test_input_gdal_formats.TextGridTests.test_grid_requires_a_projected_metre_crs) ... ok
+test_missing_or_invalid_crs (test_input_gdal_formats.TextGridTests.test_missing_or_invalid_crs) ... ok
+test_missing_points_become_nodata (test_input_gdal_formats.TextGridTests.test_missing_points_become_nodata) ... ok
+test_no_valid_points (test_input_gdal_formats.TextGridTests.test_no_valid_points) ... ok
+test_north_east_column_order (test_input_gdal_formats.TextGridTests.test_north_east_column_order) ... ok
+test_orientation_georeference_and_values (test_input_gdal_formats.TextGridTests.test_orientation_georeference_and_values) ... ok
+test_point_order_in_the_file_does_not_matter (test_input_gdal_formats.TextGridTests.test_point_order_in_the_file_does_not_matter) ... ok
+test_points_off_the_declared_grid_are_rejected (test_input_gdal_formats.TextGridTests.test_points_off_the_declared_grid_are_rejected) ... ok
+test_prepare_inputs_text_end_to_end (test_input_gdal_formats.TextGridTests.test_prepare_inputs_text_end_to_end) ... Input: /tmp/tmpih7d90bl/g.csv
+ok
+test_single_point (test_input_gdal_formats.TextGridTests.test_single_point) ... ok
+test_source_nodata_values_are_holes (test_input_gdal_formats.TextGridTests.test_source_nodata_values_are_holes) ... ok
+test_work_files_are_not_left_behind_after_a_grid_conflict (test_input_gdal_formats.TextGridTests.test_work_files_are_not_left_behind_after_a_grid_conflict) ... ok
+test_corrupt_world_file_never_yields_a_silently_wrong_dem (test_input_gdal_formats.TiffWorldFileTests.test_corrupt_world_file_never_yields_a_silently_wrong_dem) ... Forest DEM (raster): /tmp/tmpsbb7chcp/t.tif
+ok
+test_each_world_file_extension_is_found (test_input_gdal_formats.TiffWorldFileTests.test_each_world_file_extension_is_found) ... Forest DEM (raster): /tmp/tmpgrpk_k_l/a.tif
+ok
+test_forest_geotiff_nodata_rules (test_input_gdal_formats.TiffWorldFileTests.test_forest_geotiff_nodata_rules) ... Forest DEM (raster): /tmp/tmp62iz9ogc/nd.tif
+ok
+test_forest_tiff_without_crs_or_world_file_is_rejected (test_input_gdal_formats.TiffWorldFileTests.test_forest_tiff_without_crs_or_world_file_is_rejected) ... Forest DEM (raster): /tmp/tmpb26ourgj/t.tif
+ok
+test_report_marks_world_file_and_geotiff_sources (test_input_gdal_formats.TiffWorldFileTests.test_report_marks_world_file_and_geotiff_sources) ... Forest DEM (raster): /tmp/tmpqw_r_wjz/w.tif
+ok
+test_tiff_without_world_file_is_not_reported_as_having_one (test_input_gdal_formats.TiffWorldFileTests.test_tiff_without_world_file_is_not_reported_as_having_one) ... ok
+test_unreadable_forest_tiff (test_input_gdal_formats.TiffWorldFileTests.test_unreadable_forest_tiff) ... Forest DEM (raster): /tmp/tmph2ylrce2/junk.tif
+ok
+test_world_file_applies_to_the_plain_raster_input_type_too (test_input_gdal_formats.TiffWorldFileTests.test_world_file_applies_to_the_plain_raster_input_type_too) ... Input: /tmp/tmpwzwslcse/t.tif
+ok
+test_world_file_without_input_crs_is_rejected (test_input_gdal_formats.TiffWorldFileTests.test_world_file_without_input_crs_is_rejected) ... Forest DEM (raster): /tmp/tmphf22lto4/t.tif
+ok
+test_crs_aliases (test_input_gsi_xml.GsiParseTests.test_crs_aliases) ... ok
+test_file_without_dem_element_yields_nothing (test_input_gsi_xml.GsiParseTests.test_file_without_dem_element_yields_nothing) ... ok
+test_good_file_values_nodata_and_georeference (test_input_gsi_xml.GsiParseTests.test_good_file_values_nodata_and_georeference) ... ok
+test_jgd2024_alias_is_flagged_only_without_override (test_input_gsi_xml.GsiParseTests.test_jgd2024_alias_is_flagged_only_without_override) ... ok
+test_legitimate_zero_and_negative_elevations_are_kept (test_input_gsi_xml.GsiParseTests.test_legitimate_zero_and_negative_elevations_are_kept) ... ok
+test_missing_crs_requires_explicit_override (test_input_gsi_xml.GsiParseTests.test_missing_crs_requires_explicit_override) ... ok
+test_multiple_dem_elements_yield_multiple_grids (test_input_gsi_xml.GsiParseTests.test_multiple_dem_elements_yield_multiple_grids) ... ok
+test_nodata_conventions (test_input_gsi_xml.GsiParseTests.test_nodata_conventions) ... ok
+test_partial_mesh_with_start_point_leaves_leading_cells_nodata (test_input_gsi_xml.GsiParseTests.test_partial_mesh_with_start_point_leaves_leading_cells_nodata) ... ok
+test_shift_jis_declared_encoding (test_input_gsi_xml.GsiParseTests.test_shift_jis_declared_encoding) ... ok
+test_traversal_orders (test_input_gsi_xml.GsiParseTests.test_traversal_orders) ... ok
+test_unknown_srs_name_is_passed_through_for_later_crs_check (test_input_gsi_xml.GsiParseTests.test_unknown_srs_name_is_passed_through_for_later_crs_check) ... ok
+test_binary_garbage (test_input_gsi_xml.GsiRejectionTests.test_binary_garbage) ... ok
+test_cancellation_is_honoured (test_input_gsi_xml.GsiRejectionTests.test_cancellation_is_honoured) ... ok
+test_dtd_and_entity_declarations_are_rejected (test_input_gsi_xml.GsiRejectionTests.test_dtd_and_entity_declarations_are_rejected) ... ok
+test_empty_or_inverted_grid_envelope (test_input_gsi_xml.GsiRejectionTests.test_empty_or_inverted_grid_envelope) ... ok
+test_extent_must_be_ordered_latitude_longitude (test_input_gsi_xml.GsiRejectionTests.test_extent_must_be_ordered_latitude_longitude) ... ok
+test_external_entity_reference_is_never_resolved (test_input_gsi_xml.GsiRejectionTests.test_external_entity_reference_is_never_resolved) ... ok
+test_grid_envelope_must_be_2d (test_input_gsi_xml.GsiRejectionTests.test_grid_envelope_must_be_2d) ... ok
+test_malformed_tuple (test_input_gsi_xml.GsiRejectionTests.test_malformed_tuple) ... ok
+test_more_tuples_than_cells (test_input_gsi_xml.GsiRejectionTests.test_more_tuples_than_cells) ... ok
+test_non_numeric_elevation_is_rejected (test_input_gsi_xml.GsiRejectionTests.test_non_numeric_elevation_is_rejected) ... ok
+test_nonnumeric_extent_is_an_error (test_input_gsi_xml.GsiRejectionTests.test_nonnumeric_extent_is_an_error) ... ok
+test_pixel_limit_boundary (test_input_gsi_xml.GsiRejectionTests.test_pixel_limit_boundary) ... ok
+test_size_guard_for_oversized_payload (test_input_gsi_xml.GsiRejectionTests.test_size_guard_for_oversized_payload) ... ok
+test_start_point_outside_grid (test_input_gsi_xml.GsiRejectionTests.test_start_point_outside_grid) ... ok
+test_truncated_and_non_xml_input (test_input_gsi_xml.GsiRejectionTests.test_truncated_and_non_xml_input) ... ok
+test_unknown_declared_encoding (test_input_gsi_xml.GsiRejectionTests.test_unknown_declared_encoding) ... ok
+test_unsupported_traversal (test_input_gsi_xml.GsiRejectionTests.test_unsupported_traversal) ... ok
+test_unsupported_tuple_separator (test_input_gsi_xml.GsiRejectionTests.test_unsupported_tuple_separator) ... ok
+test_utf16_document_with_dtd_is_not_parsed (test_input_gsi_xml.GsiRejectionTests.test_utf16_document_with_dtd_is_not_parsed) ... ok
+test_start_outside_traversal (test_input_gsi_xml.TraversalTests.test_start_outside_traversal) ... ok
+test_start_point_offsets_the_walk (test_input_gsi_xml.TraversalTests.test_start_point_offsets_the_walk) ... ok
+test_bounds_are_reprojected_to_the_target_crs (test_input_lidar_mocked.LidarCrsTests.test_bounds_are_reprojected_to_the_target_crs) ... Selected point input: /tmp/tmpfvie451t/pts.las
+ok
+test_compound_crs_in_the_header_blocks_until_input_crs_is_given (test_input_lidar_mocked.LidarCrsTests.test_compound_crs_in_the_header_blocks_until_input_crs_is_given) ... Selected point input: /tmp/tmpuu4benmz/pts.las
+ok
+test_crs_embedded_in_the_summary_is_used_when_input_crs_is_empty (test_input_lidar_mocked.LidarCrsTests.test_crs_embedded_in_the_summary_is_used_when_input_crs_is_empty) ... Selected point input: /tmp/tmpembk61c5/pts.las
+ok
+test_garbage_input_crs (test_input_lidar_mocked.LidarCrsTests.test_garbage_input_crs) ... Selected point input: /tmp/tmpcuy_h4g2/pts.las
+ok
+test_input_crs_overrides_the_header (test_input_lidar_mocked.LidarCrsTests.test_input_crs_overrides_the_header) ... Selected point input: /tmp/tmp5m7w0ssw/pts.las
+ok
+test_missing_crs_everywhere_is_rejected (test_input_lidar_mocked.LidarCrsTests.test_missing_crs_everywhere_is_rejected) ... Selected point input: /tmp/tmpl15o14n3/pts.las
+ok
+test_swapped_axis_input_is_not_silently_accepted_as_valid_japan_data (test_input_lidar_mocked.LidarCrsTests.test_swapped_axis_input_is_not_silently_accepted_as_valid_japan_data) ... Selected point input: /tmp/tmpl85k17sk/pts.las
+ok
+test_buffered_block_larger_than_max_input_pixels (test_input_lidar_mocked.LidarLimitTests.test_buffered_block_larger_than_max_input_pixels) ... Selected point input: /tmp/tmpx_k4fywg/pts.las
+ok
+test_cancelled_before_start (test_input_lidar_mocked.LidarLimitTests.test_cancelled_before_start) ... ok
+test_continental_scale_extent_is_refused_not_attempted (test_input_lidar_mocked.LidarLimitTests.test_continental_scale_extent_is_refused_not_attempted) ... Selected point input: /tmp/tmp34p32997/pts.las
+ok
+test_mosaic_larger_than_max_pixels_is_refused_before_any_pipeline_runs (test_input_lidar_mocked.LidarLimitTests.test_mosaic_larger_than_max_pixels_is_refused_before_any_pipeline_runs) ... Selected point input: /tmp/tmpqdm0g6bo/pts.las
+ok
+test_too_many_blocks (test_input_lidar_mocked.LidarLimitTests.test_too_many_blocks) ... Selected point input: /tmp/tmpqstrwbu9/pts.las
+ok
+test_executable_must_exist_and_not_be_a_script_wrapper (test_input_lidar_mocked.PdalGateTests.test_executable_must_exist_and_not_be_a_script_wrapper) ... ok
+test_pdal_older_than_2_9_is_refused (test_input_lidar_mocked.PdalGateTests.test_pdal_older_than_2_9_is_refused) ... ok
+test_unparseable_version_is_refused (test_input_lidar_mocked.PdalGateTests.test_unparseable_version_is_refused) ... ok
+test_auto_mode_resets_labels_then_runs_smrf_before_selecting_ground (test_input_lidar_mocked.PipelineContractTests.test_auto_mode_resets_labels_then_runs_smrf_before_selecting_ground) ... ok
+test_classified_mode_keeps_only_configured_ground_classes (test_input_lidar_mocked.PipelineContractTests.test_classified_mode_keeps_only_configured_ground_classes) ... ok
+test_every_branch_has_a_unique_tag_so_readers_do_not_inherit_each_other (test_input_lidar_mocked.PipelineContractTests.test_every_branch_has_a_unique_tag_so_readers_do_not_inherit_each_other) ... ok
+test_ground_only_mode_does_not_filter_by_class (test_input_lidar_mocked.PipelineContractTests.test_ground_only_mode_does_not_filter_by_class) ... ok
+test_point_method_and_radius_are_forwarded (test_input_lidar_mocked.PipelineContractTests.test_point_method_and_radius_are_forwarded) ... ok
+test_reader_reprojection_crop_chain_and_writer_grid (test_input_lidar_mocked.PipelineContractTests.test_reader_reprojection_crop_chain_and_writer_grid) ... ok
+test_ascii_path_is_passed_through_unstaged (test_input_lidar_mocked.ReaderAndStagingTests.test_ascii_path_is_passed_through_unstaged) ... ok
+test_discovery_accepts_las_family_extensions_only (test_input_lidar_mocked.ReaderAndStagingTests.test_discovery_accepts_las_family_extensions_only) ... ok
+test_reader_selection_by_file_name (test_input_lidar_mocked.ReaderAndStagingTests.test_reader_selection_by_file_name) ... Selected point input: /tmp/tmpeskedmv8/a.las
+ok
+test_summary_srs_may_be_a_plain_string (test_input_lidar_mocked.ReaderAndStagingTests.test_summary_srs_may_be_a_plain_string) ... Selected point input: /tmp/tmpfm3fu148/pts.las
+ok
+test_unicode_path_is_staged_under_an_ascii_name_in_work (test_input_lidar_mocked.ReaderAndStagingTests.test_unicode_path_is_staged_under_an_ascii_name_in_work) ... ok
+test_unicode_path_with_non_ascii_work_dir_is_refused_clearly (test_input_lidar_mocked.ReaderAndStagingTests.test_unicode_path_with_non_ascii_work_dir_is_refused_clearly) ... ok
+test_empty_or_zero_point_file (test_input_lidar_mocked.SummaryValidationTests.test_empty_or_zero_point_file) ... Selected point input: /tmp/tmp5ni894nb/pts.las
+ok
+test_missing_bounds_or_partial_bounds (test_input_lidar_mocked.SummaryValidationTests.test_missing_bounds_or_partial_bounds) ... Selected point input: /tmp/tmpfanxrp3d/pts.las
+ok
+test_missing_summary_section (test_input_lidar_mocked.SummaryValidationTests.test_missing_summary_section) ... Selected point input: /tmp/tmp6zqceq4p/pts.las
+ok
+test_non_json_pdal_output (test_input_lidar_mocked.SummaryValidationTests.test_non_json_pdal_output) ... Selected point input: /tmp/tmp42gox05s/pts.las
+ok
+test_nonfinite_bounds (test_input_lidar_mocked.SummaryValidationTests.test_nonfinite_bounds) ... Selected point input: /tmp/tmp82xore7d/pts.las
+ok
+test_pdal_failure_on_info_surfaces_stderr (test_input_lidar_mocked.SummaryValidationTests.test_pdal_failure_on_info_surfaces_stderr) ... Selected point input: /tmp/tmpz_mopw9l/pts.las
+ok
+test_valid_summary_yields_a_record_with_reprojected_bounds (test_input_lidar_mocked.SummaryValidationTests.test_valid_summary_yields_a_record_with_reprojected_bounds) ... Selected point input: /tmp/tmpou5og3h5/pts.las
+ok
+test_autodetect_accepts_cp932 (test_input_options.AutodetectAndGridCellTests.test_autodetect_accepts_cp932) ... ok
+test_autodetect_header_and_delimiters (test_input_options.AutodetectAndGridCellTests.test_autodetect_header_and_delimiters) ... ok
+test_autodetect_rejects_non_utf8_non_cp932_bytes (test_input_options.AutodetectAndGridCellTests.test_autodetect_rejects_non_utf8_non_cp932_bytes) ... ok
+test_autodetect_rejects_text_without_three_numeric_columns (test_input_options.AutodetectAndGridCellTests.test_autodetect_rejects_text_without_three_numeric_columns) ... ok
+test_autodetect_skips_extra_non_numeric_prelude (test_input_options.AutodetectAndGridCellTests.test_autodetect_skips_extra_non_numeric_prelude) ... ok
+test_infer_grid_cell_rejects_unequal_intervals (test_input_options.AutodetectAndGridCellTests.test_infer_grid_cell_rejects_unequal_intervals) ... ok
+test_infer_grid_cell_row_major (test_input_options.AutodetectAndGridCellTests.test_infer_grid_cell_row_major) ... ok
+test_infer_grid_cell_single_point_cannot_be_inferred (test_input_options.AutodetectAndGridCellTests.test_infer_grid_cell_single_point_cannot_be_inferred) ... ok
+test_duplicate_selection_is_deduplicated (test_input_options.DiscoverTests.test_duplicate_selection_is_deduplicated) ... ok
+test_empty_folder (test_input_options.DiscoverTests.test_empty_folder) ... ok
+test_explicit_wrong_extension_is_an_error (test_input_options.DiscoverTests.test_explicit_wrong_extension_is_an_error) ... ok
+test_file_count_limit (test_input_options.DiscoverTests.test_file_count_limit) ... ok
+test_folder_non_recursive (test_input_options.DiscoverTests.test_folder_non_recursive) ... ok
+test_folder_recursive_filters_by_extension_case_insensitively (test_input_options.DiscoverTests.test_folder_recursive_filters_by_extension_case_insensitively) ... ok
+test_glob_pattern (test_input_options.DiscoverTests.test_glob_pattern) ... ok
+test_gsi_extensions (test_input_options.DiscoverTests.test_gsi_extensions) ... ok
+test_japanese_file_and_folder_names (test_input_options.DiscoverTests.test_japanese_file_and_folder_names) ... ok
+test_lidar_extensions (test_input_options.DiscoverTests.test_lidar_extensions) ... ok
+test_missing_path_and_empty_inputs (test_input_options.DiscoverTests.test_missing_path_and_empty_inputs) ... ok
+test_relative_input_uses_base_dir (test_input_options.DiscoverTests.test_relative_input_uses_base_dir) ... ok
+test_text_type_picks_text_extensions (test_input_options.DiscoverTests.test_text_type_picks_text_extensions) ... ok
+test_world_file_alone_is_not_an_input (test_input_options.DiscoverTests.test_world_file_alone_is_not_an_input) ... ok
+test_world_file_next_to_tif_is_silently_skipped (test_input_options.DiscoverTests.test_world_file_next_to_tif_is_silently_skipped) ... ok
+test_list_semicolon_and_quotes (test_input_options.ExplicitFileParameterTests.test_list_semicolon_and_quotes) ... ok
+test_none_and_empty (test_input_options.ExplicitFileParameterTests.test_none_and_empty) ... ok
+test_blank_and_whitespace_lines_are_ignored (test_input_options.TextRowsTests.test_blank_and_whitespace_lines_are_ignored) ... ok
+test_column_out_of_range (test_input_options.TextRowsTests.test_column_out_of_range) ... ok
+test_column_selection_and_extra_columns (test_input_options.TextRowsTests.test_column_selection_and_extra_columns) ... ok
+test_comma_with_header (test_input_options.TextRowsTests.test_comma_with_header) ... ok
+test_cp932_file_with_matching_encoding (test_input_options.TextRowsTests.test_cp932_file_with_matching_encoding) ... ok
+test_delimiters (test_input_options.TextRowsTests.test_delimiters) ... ok
+test_empty_file_yields_no_rows (test_input_options.TextRowsTests.test_empty_file_yields_no_rows) ... ok
+test_float_formats (test_input_options.TextRowsTests.test_float_formats) ... ok
+test_header_not_skipped_is_an_error_naming_the_line (test_input_options.TextRowsTests.test_header_not_skipped_is_an_error_naming_the_line) ... ok
+test_missing_trailing_newline_and_crlf (test_input_options.TextRowsTests.test_missing_trailing_newline_and_crlf) ... ok
+test_nan_and_inf_rejected_rather_than_treated_as_nodata (test_input_options.TextRowsTests.test_nan_and_inf_rejected_rather_than_treated_as_nodata) ... ok
+test_nodata_not_dropped_when_not_configured (test_input_options.TextRowsTests.test_nodata_not_dropped_when_not_configured) ... ok
+test_non_numeric_value_rejected (test_input_options.TextRowsTests.test_non_numeric_value_rejected) ... ok
+test_north_east_axis_order_swaps_columns (test_input_options.TextRowsTests.test_north_east_axis_order_swaps_columns) ... ok
+test_short_row_rejected (test_input_options.TextRowsTests.test_short_row_rejected) ... ok
+test_skip_rows_swallows_multiple_header_lines (test_input_options.TextRowsTests.test_skip_rows_swallows_multiple_header_lines) ... ok
+test_source_nodata_rows_are_dropped (test_input_options.TextRowsTests.test_source_nodata_rows_are_dropped) ... ok
+test_unknown_encoding_name (test_input_options.TextRowsTests.test_unknown_encoding_name) ... ok
+test_utf8_bom_header_is_tolerated_by_default_encoding (test_input_options.TextRowsTests.test_utf8_bom_header_is_tolerated_by_default_encoding) ... ok
+test_wrong_delimiter_is_an_error (test_input_options.TextRowsTests.test_wrong_delimiter_is_an_error) ... ok
+test_wrong_encoding_gives_a_decode_error_not_garbage (test_input_options.TextRowsTests.test_wrong_encoding_gives_a_decode_error_not_garbage) ... ok
+test_accepted_boundary_values (test_input_options.ValidateInputTests.test_accepted_boundary_values) ... ok
+test_defaults_are_valid (test_input_options.ValidateInputTests.test_defaults_are_valid) ... ok
+test_invalid_options_are_rejected (test_input_options.ValidateInputTests.test_invalid_options_are_rejected) ... ok
+test_text_requires_input_crs_but_other_types_do_not (test_input_options.ValidateInputTests.test_text_requires_input_crs_but_other_types_do_not) ... ok
+test_non_network_error_is_not_retried (test_network.NetworkRetryTests.test_non_network_error_is_not_retried) ... ok
+test_permanent_network_error_reports_operation (test_network.NetworkRetryTests.test_permanent_network_error_reports_operation) ... ネットワーク共有への接続エラーを検出しました。1秒後に再試行します（1/3）: SMB listing
+ok
+test_retry_transient_network_error_then_succeed (test_network.NetworkRetryTests.test_retry_transient_network_error_then_succeed) ... ネットワーク共有への接続エラーを検出しました。1秒後に再試行します（1/3）: SMB read
+ok
+test_cancel_terminates_running_process (test_pdal_process.PdalProcessTests.test_cancel_terminates_running_process) ... ok
+test_missing_executable_raises (test_pdal_process.PdalProcessTests.test_missing_executable_raises) ... ok
+test_nonzero_exit_raises_with_stderr (test_pdal_process.PdalProcessTests.test_nonzero_exit_raises_with_stderr) ... ok
+test_precancelled_feedback_prevents_start (test_pdal_process.PdalProcessTests.test_precancelled_feedback_prevents_start) ... ok
+test_all_inputs_invalid_stops_with_error (test_prepare_inputs_warnings.ForestIgnoredWarningTests.test_all_inputs_invalid_stops_with_error) ... ok
+test_mixed_inputs_warn_once_and_continue (test_prepare_inputs_warnings.ForestIgnoredWarningTests.test_mixed_inputs_warn_once_and_continue) ... ok
+test_offgrid_input_is_ignored_with_warning (test_prepare_inputs_warnings.ForestIgnoredWarningTests.test_offgrid_input_is_ignored_with_warning) ... ok
+test_known_value_beats_unknown_at_same_criterion (test_priority.PriorityTests.test_known_value_beats_unknown_at_same_criterion) ... ok
+test_metadata_csv_and_json (test_priority.PriorityTests.test_metadata_csv_and_json) ... ok
+test_metadata_rejects_bad_values (test_priority.PriorityTests.test_metadata_rejects_bad_values) ... ok
+test_plane_zone_epsg (test_priority.PriorityTests.test_plane_zone_epsg) ... ok
+test_priority_order_is_lexicographic (test_priority.PriorityTests.test_priority_order_is_lexicographic) ... ok
+test_invalid_payload_preserves_existing_profile (test_profiles.ProfileTests.test_invalid_payload_preserves_existing_profile) ... ok
+test_reject_foreign_future_and_unknown_parameters (test_profiles.ProfileTests.test_reject_foreign_future_and_unknown_parameters) ... ok
+test_round_trip_and_missing_path (test_profiles.ProfileTests.test_round_trip_and_missing_path) ... ok
+test_vertical_default_selection_and_legacy_override (test_profiles.ProfileTests.test_vertical_default_selection_and_legacy_override) ... ok
+test_ambiguous_basename_not_applied (test_regressions.Regressions.test_ambiguous_basename_not_applied) ... ok
+test_auto_crs_call_supplies_osr (test_regressions.Regressions.test_auto_crs_call_supplies_osr) ... ok
+test_duplicate_metadata_rejected (test_regressions.Regressions.test_duplicate_metadata_rejected) ... ok
+test_merge_failure_removes_temporary_vrt (test_regressions.Regressions.test_merge_failure_removes_temporary_vrt) ... ok
+test_mixed_archive_year_unknown (test_regressions.Regressions.test_mixed_archive_year_unknown) ... ok
+test_rotated_dem_bounds_enclose_all_corners (test_regressions.Regressions.test_rotated_dem_bounds_enclose_all_corners) ... ok
+test_sheet_bounds_use_warp (test_regressions.Regressions.test_sheet_bounds_use_warp) ... ok
+test_tile_nodata_decodes_to_standard_value (test_regressions.Regressions.test_tile_nodata_decodes_to_standard_value) ... ok
+test_cancel_removes_buffer_raster (test_temp_cleanup.TempCleanupTests.test_cancel_removes_buffer_raster) ... ok
+test_limit_exceeded_removes_staged_copies (test_temp_cleanup.TempCleanupTests.test_limit_exceeded_removes_staged_copies) ... Selected point input: /tmp/tmpbwrzvhve/src/点群その1.las
+ok
+test_logs_and_json_survive_failure (test_temp_cleanup.TempCleanupTests.test_logs_and_json_survive_failure) ... Selected point input: /tmp/tmpfiv3p58_/src/pts.csv
+ok
+test_pipeline_failure_removes_large_buffer (test_temp_cleanup.TempCleanupTests.test_pipeline_failure_removes_large_buffer) ... Selected point input: /tmp/tmppt5uktto/src/pts.csv
+ok
+test_second_input_failure_removes_staged_copies (test_temp_cleanup.TempCleanupTests.test_second_input_failure_removes_staged_copies) ... Selected point input: /tmp/tmptqmlbuhf/src/点群その1.las
+ok
+test_success_removes_buffer_keeps_logs (test_temp_cleanup.TempCleanupTests.test_success_removes_buffer_keeps_logs) ... Selected point input: /tmp/tmpjqtl6bc3/src/pts.csv
+ok
+test_encodable_range_endpoints_are_accepted (test_terrainrgb.TerrainRGBTests.test_encodable_range_endpoints_are_accepted) ... ok
+test_half_step_stays_within_half_step (test_terrainrgb.TerrainRGBTests.test_half_step_stays_within_half_step) ... ok
+test_invalid_masked_elevation_is_transparent (test_terrainrgb.TerrainRGBTests.test_invalid_masked_elevation_is_transparent) ... ok
+test_nodata_alpha (test_terrainrgb.TerrainRGBTests.test_nodata_alpha) ... ok
+test_nonfinite_default_is_transparent (test_terrainrgb.TerrainRGBTests.test_nonfinite_default_is_transparent) ... ok
+test_out_of_range_elevation_is_rejected (test_terrainrgb.TerrainRGBTests.test_out_of_range_elevation_is_rejected) ... ok
+test_quantization_snaps_to_nearest_step (test_terrainrgb.TerrainRGBTests.test_quantization_snaps_to_nearest_step) ... ok
+test_round_trip (test_terrainrgb.TerrainRGBTests.test_round_trip) ... ok
+test_tile_range (test_terrainrgb.TerrainRGBTests.test_tile_range) ... ok
+test_tile_range_zoom_and_clamping (test_terrainrgb.TerrainRGBTests.test_tile_range_zoom_and_clamping) ... ok
+test_grid_at_limit_is_accepted (test_text_grid_limits.TextGridLimitTests.test_grid_at_limit_is_accepted) ... ok
+test_grid_over_limit_is_rejected_before_allocation (test_text_grid_limits.TextGridLimitTests.test_grid_over_limit_is_rejected_before_allocation) ... ok
+test_huge_extent_from_outlier_is_rejected (test_text_grid_limits.TextGridLimitTests.test_huge_extent_from_outlier_is_rejected) ... ok
+test_invalid_step_is_rejected (test_text_grid_limits.TextGridLimitTests.test_invalid_step_is_rejected) ... ok
+
+----------------------------------------------------------------------
+Ran 295 tests in 9.220s
+
+OK

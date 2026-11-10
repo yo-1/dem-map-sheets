@@ -1,0 +1,26 @@
+DEM Map Sheets v0.1.0 validation record
+Date: 2026-10-07
+
+PASS: Python compileall for plugin package.
+PASS: TerrainRGB encode/decode unit tests (3 tests).
+PASS: Synthetic LEM 2x2 parse including -9999 NoData.
+PASS: Real GSI DEM ZIP smoke test: first 3 XML members parsed, each 750x1125, +x-y, 843750 tuples.
+UNVERIFIED: QGIS 3.44 Processing dialog and end-to-end GeoTIFF write (GDAL unavailable in build container).
+UNVERIFIED: PDAL LAS/LAZ/COPC conversion on Windows/QGIS environment.
+UNVERIFIED: Province-scale merged BigTIFF and z2-18 TerrainRGB generation.
+UNVERIFIED: LEM variants beyond existing CS Map Sheets reader coverage.
+
+[v0.2.0 automatic overlap priority]
+- Pure-Python priority tests: survey year desc -> accuracy asc -> ground density desc -> sheet coverage desc.
+- Missing metadata is never guessed; known values outrank unknown values at the same criterion.
+- EPSG zone mapping tested for JGD2011/JGD2000 plane rectangular zones.
+- CSV/JSON metadata parsing and invalid-value rejection tested.
+- Windows/QGIS/GDAL integration test remains required for per-sheet VRT merge and large-area processing.
+
+[v0.2.1-rc1 Work audit 2026-10-07]
+PASS: 15 pure-Python unit/regression tests (9 existing + 6 new).
+PASS: compileall plugin and validation scripts.
+UNVERIFIED: GDAL engine integration, QGIS Processing integration, Windows/QGIS 3.44 UI.
+UNVERIFIED: PDAL conversion, real LEM/ZIP variants, province-scale workloads.
+Supplied eight synthetic overlap cases and QGIS/GDAL validation runners.
+No main merge or GitHub writes performed.

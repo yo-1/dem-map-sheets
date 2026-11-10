@@ -1,0 +1,65 @@
+name: Synthetic DEM validation
+on:
+  pull_request:
+  push:
+    branches: ['codex/**']
+  workflow_dispatch:
+permissions:
+  contents: read
+jobs:
+  synthetic:
+    runs-on: ubuntu-24.04
+    steps:
+      - uses: actions/checkout@v7
+        with:
+          persist-credentials: false
+      - name: Install GDAL test dependencies
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y python3-gdal python3-numpy python3-pil
+      - name: EPSG probe (GDAL 3.8.4, apt)
+        run: /usr/bin/python3 validation/epsg_probe.py
+      - name: Unit tests
+        run: PYTHONPATH=. /usr/bin/python3 -m unittest discover -s dem_map_sheets/tests -v
+      - name: DEM selection and NoData fallback
+        run: /usr/bin/python3 validation/validate_dem.py
+      - name: Independent TerrainRGB PNG roundtrip
+        run: /usr/bin/python3 validation/verify_terrainrgb.py "$PWD" "$PWD/validation/terrainrgb_results"
+      - name: GDAL edge regressions (rotated rasters)
+        run: PYTHONPATH=. /usr/bin/python3 -m unittest validation.test_gdal_edges -v
+      - name: Preserve results
+        if: always()
+        uses: actions/upload-artifact@v7
+        with:
+          name: synthetic-validation
+          path: |
+            validation/results/**/validation_results.json
+            validation/terrainrgb_results/terrainrgb_results.json
+          if-no-files-found: warn
+
+  gdal310:
+    # Support-floor verification: environment-pointcloud.yml requires
+    # gdal>=3.10, so the suite also runs on GDAL 3.10 (conda-forge).
+    runs-on: ubuntu-24.04
+    steps:
+      - uses: actions/checkout@v7
+        with:
+          persist-credentials: false
+      - uses: mamba-org/setup-micromamba@v2
+        with:
+          environment-name: dem-gdal310
+          create-args: >-
+            python=3.12
+            gdal=3.10
+            numpy
+            pillow
+          init-shell: bash
+      - name: EPSG probe (GDAL 3.10)
+        shell: bash -el {0}
+        run: python validation/epsg_probe.py
+      - name: Unit tests (GDAL 3.10)
+        shell: bash -el {0}
+        run: PYTHONPATH=. python -m unittest discover -s dem_map_sheets/tests
+      - name: KD-5 tiny-raster check (GDAL 3.10)
+        shell: bash -el {0}
+        run: PYTHONPATH=. python -m unittest validation.known_defects.test_known_defects.KnownDefects.test_kd5_tiny_raster_finer_than_output_cell_does_not_hang
