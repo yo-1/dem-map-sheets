@@ -91,9 +91,12 @@ class DEMMapSheetsAlgorithm(QgsProcessingAlgorithm):
         self.addParameter(QgsProcessingParameterEnum('FOREST_AXES','森林航空レーザCSVの座標順',
             ['北,東（測量X,Y）','東,北（GIS X,Y）'],defaultValue=0))
         self.addParameter(QgsProcessingParameterString('FOREST_CELL','森林CSV格子間隔（autoまたはm）',defaultValue='auto'))
+        self.addParameter(QgsProcessingParameterEnum('FOREST_GRID_REF','森林格子座標の解釈',
+            ['指定なし（既定：セル中心）','center（セル中心）','upper_left（セル左上角）'],defaultValue=0))
         self.addParameter(QgsProcessingParameterString('LEM_SCALE','LEM座標倍率（auto推奨）',defaultValue='auto'))
         self.addParameter(QgsProcessingParameterNumber('FOREST_NODATA','森林成果の既定NoData',
             QgsProcessingParameterNumber.Double,-9999.0))
+        self.addParameter(QgsProcessingParameterBoolean('SKIP_INVALID','読み込めない入力ラスターを警告してスキップする',False))
         self.addParameter(QgsProcessingParameterBoolean('KEEP_WORK','中間変換ファイルを残す',False))
         self.addParameter(QgsProcessingParameterFolderDestination('OUTPUT','出力先の親フォルダー'))
         self.addOutput(QgsProcessingOutputRasterLayer('MERGED_DEM','結合GeoTIFF DEM'))
@@ -154,7 +157,11 @@ class DEMMapSheetsAlgorithm(QgsProcessingAlgorithm):
             merge_priority=['last','first','auto'][self.parameterAsEnum(parameters,'MERGE_PRIORITY',context)],
             priority_metadata=self.parameterAsFile(parameters,'PRIORITY_METADATA',context),
             max_priority_sheets=self.parameterAsInt(parameters,'PRIORITY_MAX_SHEETS',context),
+            skip_invalid_rasters=self.parameterAsBool(parameters,'SKIP_INVALID',context),
             keep_work=self.parameterAsBool(parameters,'KEEP_WORK',context))
+        grid_ref=self.parameterAsEnum(parameters,'FOREST_GRID_REF',context)
+        if grid_ref in (1,2):
+            c['forest_grid_coordinate_reference']=['center','upper_left'][grid_ref-1]
         feedback.pushInfo(f'DEM Map Sheets v{VERSION}: 入力変換を開始します。')
         try:
             manifest=run(c,result_dir,gdal,osr,feedback)
