@@ -10,6 +10,7 @@ email=yo-1@geographic-information.net
 homepage=https://github.com/yo-1/dem-map-sheets
 tracker=https://github.com/yo-1/dem-map-sheets/issues
 repository=https://github.com/yo-1/dem-map-sheets
+icon=icon.svg
 category=Raster
 experimental=False
 deprecated=False
