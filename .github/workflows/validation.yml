@@ -122,7 +122,7 @@ jobs:
         with:
           persist-credentials: false
       - name: Build the plugin ZIP
-        run: python3 validation/build_plugin_zip.py --commit HEAD --out "$RUNNER_TEMP/zip" | tee "$RUNNER_TEMP/zip/../build.txt"
+        run: python3 validation/build_plugin_zip.py --commit HEAD --out "$RUNNER_TEMP/zip"
       - name: Upload the ZIP and its manifest
         uses: actions/upload-artifact@v7
         with:
