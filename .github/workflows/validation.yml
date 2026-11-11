@@ -63,3 +63,27 @@ jobs:
       - name: KD-5 tiny-raster check (GDAL 3.10)
         shell: bash -el {0}
         run: PYTHONPATH=. python -m unittest validation.known_defects.test_known_defects.KnownDefects.test_kd5_tiny_raster_finer_than_output_cell_does_not_hang
+
+  real-pdal:
+    # Real PDAL (conda-forge, environment-pointcloud.yml): the tests that
+    # the mocked suites cannot vouch for (NoData point guard, interpolation
+    # methods, LAS/LAZ reading, axis order). REAL_PDAL_PATH enables the
+    # opt-in real-PDAL tests.
+    runs-on: ubuntu-24.04
+    steps:
+      - uses: actions/checkout@v7
+        with:
+          persist-credentials: false
+      - uses: mamba-org/setup-micromamba@v2
+        with:
+          environment-name: dem-pointcloud
+          environment-file: dem_map_sheets/environment-pointcloud.yml
+          init-shell: bash
+      - name: Versions
+        shell: bash -el {0}
+        run: |
+          pdal --version
+          python -c "from osgeo import gdal; print('GDAL', gdal.__version__)"
+      - name: PDAL probe
+        shell: bash -el {0}
+        run: REAL_PDAL_PATH="$(which pdal)" python validation/pdal_probe.py
