@@ -72,7 +72,7 @@ class RealPdalTests(unittest.TestCase):
         self.assertIsNotNone(ds)
         arr = ds.GetRasterBand(1).ReadAsArray()
         ds = None
-        valid = arr[arr != -999999.0]
+        valid = arr[arr != -9999.0]  # point blocks carry the output NoData (default -9999)
         self.assertGreaterEqual(valid.size, 10)
         # corner cell centre (5, 35) interpolates the z=103/104 points
         self.assertTrue(102.0 < float(arr[0, 0]) < 105.5, arr[0, 0])
@@ -122,7 +122,7 @@ class RealPdalTests(unittest.TestCase):
         cy = (expected[1] + expected[3]) / 2
         self.assertTrue(west - 1000 < cx < east + 1000, (west, east, cx))
         self.assertTrue(south - 1000 < cy < north + 1000, (south, north, cy))
-        self.assertGreater((arr != -999999.0).sum(), 0)
+        self.assertGreater((arr != -9999.0).sum(), 0)
 
 
     def test_geographic_crs_input_axis_order(self):
@@ -166,7 +166,7 @@ class RealPdalTests(unittest.TestCase):
             gt = ds.GetGeoTransform()
             arr = ds.GetRasterBand(1).ReadAsArray()
             ds = None
-            total_valid += int((arr != -999999.0).sum())
+            total_valid += int((arr != -9999.0).sum())
             west, north = gt[0], gt[3]
             east = west + gt[1] * arr.shape[1]
             south = north + gt[5] * arr.shape[0]
