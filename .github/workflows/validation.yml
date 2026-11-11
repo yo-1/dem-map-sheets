@@ -113,3 +113,19 @@ jobs:
           cd baseline
           REAL_PDAL_PATH="$(which pdal)" PYTHONPATH=. python -m unittest -v \
             dem_map_sheets.tests.test_real_pdal_nodata.CollisionStopTests 2>&1 || true
+
+  plugin-zip:
+    # Deterministic plugin ZIP for the hand-off (same commit -> same bytes).
+    runs-on: ubuntu-24.04
+    steps:
+      - uses: actions/checkout@v7
+        with:
+          persist-credentials: false
+      - name: Build the plugin ZIP
+        run: python3 validation/build_plugin_zip.py --commit HEAD --out "$RUNNER_TEMP/zip" | tee "$RUNNER_TEMP/zip/../build.txt"
+      - name: Upload the ZIP and its manifest
+        uses: actions/upload-artifact@v7
+        with:
+          name: plugin-zip
+          path: ${{ runner.temp }}/zip/*
+
