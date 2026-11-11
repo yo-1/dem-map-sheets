@@ -87,3 +87,6 @@ jobs:
       - name: PDAL probe
         shell: bash -el {0}
         run: REAL_PDAL_PATH="$(which pdal)" python validation/pdal_probe.py
+      - name: Unit tests with real PDAL (includes the opt-in real-PDAL tests)
+        shell: bash -el {0}
+        run: REAL_PDAL_PATH="$(which pdal)" PYTHONPATH=. python -m unittest discover -s dem_map_sheets/tests -v

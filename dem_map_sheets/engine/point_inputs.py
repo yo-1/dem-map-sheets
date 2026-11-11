@@ -8,9 +8,9 @@ import shutil
 import subprocess  # nosec B404: PDAL CLI requires an external process
 import time
 try:
-    from .input_sources import cancelled, say, crs_of, text_rows, NODATA
+    from .input_sources import cancelled, say, crs_of, text_rows, NODATA, output_nodata_of, point_nodata_collision_error
 except ImportError:
-    from input_sources import cancelled, say, crs_of, text_rows, NODATA
+    from input_sources import cancelled, say, crs_of, text_rows, NODATA, output_nodata_of, point_nodata_collision_error
 
 
 def executable(c):
@@ -105,6 +105,97 @@ def _ascii_temp_area():
     return Path(tempfile.mkdtemp(prefix='dem_map_sheets_pdal_'))
 
 
+def _f32_window(value):
+    """Closed interval of doubles that round to float32(value).
+
+    Output rasters are Float32, so two elevations that round to the same
+    float32 are the same value for NoData purposes. Comparing the window
+    instead of the exact double keeps the test independent of LAS
+    scale/offset rounding (a stored -9999 can read back as -9999.0000000002).
+    """
+    import numpy as np
+    v=np.float32(value)
+    lo=(float(np.nextafter(v,np.float32(-np.inf)))+float(v))/2
+    hi=(float(np.nextafter(v,np.float32(np.inf)))+float(v))/2
+    return float(v),lo,hi
+
+
+def _guard_windows(c):
+    """Elevations a point must not have, as (value, role, lo, hi).
+
+    * the internal missing-value sentinel (writers.gdal marks empty cells
+      with it, so a point of that value would be indistinguishable from
+      an empty cell), and
+    * the configured output NoData value (interpolation would blend such a
+      point into its neighbours; IDW and mean never reproduce the value
+      exactly, so the output cells alone cannot reveal it).
+    When both are the same float32 value only the sentinel role is kept.
+    """
+    guards=[]
+    for value,role in ((NODATA,'internal'),(output_nodata_of(c),'output')):
+        v,lo,hi=_f32_window(value)
+        if all(g[0]!=v for g in guards):guards.append((v,role,lo,hi))
+    return guards
+
+
+def _declared_window(c):
+    """Window of the input's declared NoData (source_nodata), or None."""
+    declared=c.get('source_nodata')
+    if declared is None or isinstance(declared,bool) or not math.isfinite(declared):return None
+    _v,lo,hi=_f32_window(declared)
+    return lo,hi
+
+
+def _find_statistic(node,name='Z'):
+    """Depth-first search for a PDAL filters.stats entry of dimension ``name``."""
+    if isinstance(node,dict):
+        stat=node.get('statistic')
+        if isinstance(stat,list):
+            for entry in stat:
+                if isinstance(entry,dict) and entry.get('name')==name:return entry
+        for value in node.values():
+            found=_find_statistic(value,name)
+            if found is not None:return found
+    elif isinstance(node,list):
+        for value in node:
+            found=_find_statistic(value,name)
+            if found is not None:return found
+    return None
+
+
+def count_points_in_window(exe,reader,read_path,window,declared,work,tag,feedback=None):
+    """Exact number of points whose Z lies in ``window`` (minus declared-NoData points).
+
+    Runs a streaming PDAL pipeline (reader -> filters.expression ->
+    filters.stats) and reads the count from its --metadata output. Only
+    called when the file's Z range makes a hit possible, so ordinary
+    inputs never pay for it. The metadata file is a diagnostic record and
+    survives failure pruning (.json).
+    """
+    # Widened by 1e-9 so that decimal printing can only add (never miss)
+    # a point on the half-ULP boundary.
+    lo,hi=window[0]-1e-9,window[1]+1e-9
+    expression=f'Z >= {lo:.10f} && Z <= {hi:.10f}'
+    if declared is not None:
+        expression+=f' && (Z < {declared[0]:.10f} || Z > {declared[1]:.10f})'
+    spec={'pipeline':[dict(type=reader,filename=read_path),
+                      dict(type='filters.expression',expression=expression),
+                      dict(type='filters.stats',dimensions='Z')]}
+    specfile=work/f'{tag}_pipeline.json';metafile=work/f'{tag}_metadata.json'
+    specfile.write_text(json.dumps(spec,ensure_ascii=False,indent=2),encoding='utf-8')
+    run_process(exe,['pipeline',str(specfile),'--metadata',str(metafile),'--stream'],work/f'{tag}.log',feedback)
+    meta=json.loads(metafile.read_text(encoding='utf-8-sig'))
+    stages=meta.get('stages') if isinstance(meta,dict) else None
+    if not isinstance(stages,dict) or 'filters.stats' not in stages:
+        # Never read a missing report as "no points": that would let a
+        # contaminating value through unnoticed.
+        raise RuntimeError(f'PDAL did not report point statistics for the NoData check ({metafile}). '
+                           'The elevation could not be verified; processing stopped.')
+    entry=_find_statistic(stages['filters.stats'])
+    if entry is None:return 0  # an empty view reports no statistic
+    return int(entry.get('count',0))
+
+
 def stage_unicode_source(path,work,number,feedback=None):
     # 'work' here is the PDAL-facing area chosen by points_to_rasters:
     # the run work dir when it is ASCII, otherwise a temporary ASCII
@@ -134,30 +225,33 @@ def stage_unicode_source(path,work,number,feedback=None):
 def inspect_sources(c,work,exe,osr,feedback,staged_out=None,pdal_root=None):
     if pdal_root is None:pdal_root=work
     target=crs_of(c['target_crs'],osr);records=[];staged=[]
+    guards=_guard_windows(c);declared=_declared_window(c);collisions=[]
     for number,path in enumerate(c['inputs']):
+        scan=None
         say(feedback,'Selected point input: '+path)
         if c['input_type']=='text':
             cleaned=pdal_root/f'points_{number:06d}.csv';count=0
             xmin=ymin=math.inf;xmax=ymax=-math.inf
+            hits={}
             with cleaned.open('w',encoding='ascii',newline='') as f:
                 f.write('X,Y,Z\n')
                 for x,y,z in text_rows(path,c,feedback):
-                    if z==NODATA:
-                        # A point at the internal sentinel value
-                        # would be indistinguishable from an empty
-                        # cell in the rasterized block. Do not guess
-                        # that it means "missing": stop and let the
-                        # user declare it via source_nodata (points
-                        # equal to source_nodata are already skipped
-                        # inside text_rows, so they never reach here).
-                        raise ValueError(
-                            f'入力点に標高 {NODATA:g} の点が含まれています: {path}。'
-                            'この値は欠測の印として使われる内部値で、このままでは欠測セルと区別できません。'
-                            f'元データの無効値（source_nodata）に {NODATA:g} を指定してください。'
-                            f' (A point elevation equals the internal missing-value sentinel {NODATA:g}; '
-                            'specify source_nodata for the input if it marks missing data.)')
-                    f.write(f'{x:.15g},{y:.15g},{z:.15g}\n');count+=1
-                    xmin=min(xmin,x);xmax=max(xmax,x);ymin=min(ymin,y);ymax=max(ymax,y)
+                    # Points the input declares as missing (source_nodata)
+                    # were already dropped by text_rows. Any remaining point
+                    # at the output NoData value or the internal sentinel is
+                    # not silently dropped or interpolated: it is counted and
+                    # the run stops after this input (same rule for LAS/LAZ).
+                    for value,role,lo,hi in guards:
+                        if lo<=z<=hi:
+                            hits[(value,role)]=hits.get((value,role),0)+1
+                            break
+                    else:
+                        f.write(f'{x:.15g},{y:.15g},{z:.15g}\n');count+=1
+                        xmin=min(xmin,x);xmax=max(xmax,x);ymin=min(ymin,y);ymax=max(ymax,y)
+            collisions.extend(dict(source=path,value=v,role=r,count=n) for (v,r),n in hits.items())
+            if hits:
+                # keep scanning the remaining inputs so the report is complete
+                continue
             if not count:raise ValueError('No valid text points: '+path)
             source=crs_of(c['input_crs'],osr)
             bounds=(xmin,ymin,xmax,ymax)
@@ -180,9 +274,21 @@ def inspect_sources(c,work,exe,osr,feedback,staged_out=None,pdal_root=None):
             record=dict(path=path,read_path=read_path,reader=('readers.copc' if str(path).lower().endswith('.copc.laz') else 'readers.las'),count=int(summary.get('num_points',0)),source_srs=value)
             if stage_method:record['pdal_path_staging']=stage_method
             if record['count']<=0:raise ValueError('Empty LAS/LAZ or missing point count: '+path)
+            scan=(summary.get('bounds',{}).get('minz'),summary.get('bounds',{}).get('maxz'),read_path)
         if not all(math.isfinite(v) for v in bounds):raise ValueError('Non-finite point bounds')
         record.update(crs=source.ExportToWkt(),bounds=list(transform_bounds(bounds,source,target,osr)))
+        if scan is not None:
+            # Elevation guard (see _guard_windows). The Z range from the summary
+            # rules most files out for free; only a file whose range can contain
+            # a guarded value is scanned exactly.
+            zmin,zmax,scan_path=scan
+            for gi,(value,role,lo,hi) in enumerate(guards):
+                if zmin is not None and zmax is not None and not (zmin<=hi and zmax>=lo):continue
+                n=count_points_in_window(exe,record['reader'],scan_path,(lo,hi),declared,work,
+                                         f'nodatascan_{number:06d}_{gi}',feedback)
+                if n:collisions.append(dict(source=path,value=value,role=role,count=n))
         records.append(record)
+    if collisions:raise point_nodata_collision_error(collisions)
     return records,staged
 
 
@@ -193,7 +299,7 @@ def build_pipeline(records,bounds,c,destination,classified_path=None):
     west,south,east,north=bounds
     extended=(west-halo*cell,south-halo*cell,east+halo*cell,north+halo*cell)
     crop=f'([{extended[0]},{extended[2]}],[{extended[1]},{extended[3]}])'
-    pipeline=[];tags=[]
+    pipeline=[];tags=[];declared=_declared_window(c)
     for i,r in enumerate(records):
         tag=f'R{i}';proj=f'P{i}';cut=f'C{i}';keep=f'K{i}'
         reader=dict(type=r['reader'],filename=r['read_path'],override_srs=r['crs'],tag=tag)
@@ -202,6 +308,12 @@ def build_pipeline(records,bounds,c,destination,classified_path=None):
         pipeline.append(dict(type='filters.crop',bounds=crop,inputs=[proj],tag=cut))
         if c['input_type']=='lidar':
             expression='Withheld == 0 && Classification != 7 && Classification != 18'
+            if declared is not None:
+                # Points the input declares as missing (NODATA / source_nodata) are
+                # not elevations: they must neither be interpolated nor be left to
+                # collide with the internal sentinel (text inputs drop them in
+                # text_rows; this is the LAS/LAZ counterpart).
+                expression+=f' && (Z < {declared[0]-1e-9:.10f} || Z > {declared[1]+1e-9:.10f})'
             if c['lidar_mode']=='classified':
                 expression+=' && ('+' || '.join(f'Classification == {k}' for k in c['ground_classes'])+')'
             pipeline.append(dict(type='filters.expression',expression=expression,inputs=[cut],tag=keep))

@@ -47,7 +47,7 @@ def main():
             print('mock info failure', file=sys.stderr)
             return 3
         print(json.dumps({'summary': {'bounds': {'minx': 0.0, 'miny': 0.0,
-            'maxx': 10.0, 'maxy': 10.0}, 'srs': {}, 'num_points': 100}}))
+            'maxx': 10.0, 'maxy': 10.0, 'minz': 100.0, 'maxz': 100.0}, 'srs': {}, 'num_points': 100}}))
         return 0
     if args and args[0] == 'pipeline':
         spec = json.loads(Path(args[1]).read_text())

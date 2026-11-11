@@ -41,10 +41,12 @@ COMPOUND_WKT = ('COMPD_CS["JGD2011 + JGD2011 height",PROJCS["JGD2011 / Japan Pla
                 'AXIS["Gravity-related height",UP]]]')
 
 
-def summary(bounds=(0.0, 0.0, 10.0, 10.0), num_points=100, srs=None):
+def summary(bounds=(0.0, 0.0, 10.0, 10.0), num_points=100, srs=None, zrange=(100.0, 200.0)):
+    # real PDAL always reports minz/maxz next to the horizontal bounds
     body = {'num_points': num_points, 'srs': srs if srs is not None else {}}
     if bounds is not None:
         body['bounds'] = dict(zip(('minx', 'miny', 'maxx', 'maxy'), bounds))
+        body['bounds'].update(minz=zrange[0], maxz=zrange[1])
     return {'summary': body}
 
 
@@ -142,7 +144,7 @@ class SummaryValidationTests(LidarCase):
         for token in ('NaN', 'Infinity', '-Infinity'):
             with self.subTest(token):
                 text = ('{"summary": {"num_points": 5, "srs": {}, "bounds": '
-                        f'{{"minx": {token}, "miny": 0, "maxx": 1, "maxy": 1}}}}}}')
+                        f'{{"minx": {token}, "miny": 0, "maxx": 1, "maxy": 1, "minz": 0, "maxz": 1}}}}}}')
                 with self.assertRaisesRegex(ValueError, 'Non-finite'):
                     self.inspect(text)
 

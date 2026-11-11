@@ -167,6 +167,11 @@ def _record_failure(out,work,config,exc,feedback):
             'work_dir':str(work),'work_retained':retained_mode,
             'work_removed_bytes':removed,'work_retained_bytes':retained,
             'outputs_present':outputs_present}
+        # Structured cause for failures that carry one (e.g. NoData point
+        # collisions: input, colliding value, role, point count), so the
+        # record does not depend on parsing the message text.
+        detail=getattr(exc,'detail',None)
+        if detail is not None:record['failure_detail']=detail
         (Path(out)/'run.json').write_text(json.dumps(record,ensure_ascii=False,indent=2),encoding='utf-8')
     except Exception as record_exc:
         # Recording must never mask the original error; leave a

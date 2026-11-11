@@ -610,6 +610,43 @@ def nodata_collision_error(source, output_nodata, cells):
         f'{source}: {cells} cell(s). Processing stopped; specify a different output NoData value and re-run.)')
 
 
+def point_nodata_collision_error(hits):
+    """The bilingual stop for point inputs whose elevation equals a value that
+    cannot be a point elevation: the output NoData value (interpolation would
+    blend it into neighbouring cells and the result could no longer be told
+    from missing data) or the internal missing-value sentinel (a data cell
+    would be indistinguishable from an empty one).
+
+    ``hits`` is a non-empty list of dicts: source, value, role ('output' or
+    'internal') and count (points). The first hit is named in the message;
+    all hits are kept on ``error.detail`` (recorded in run.json on failure).
+    The message names the input, the colliding value and the point count,
+    and gives the remedy for both readings of the data."""
+    first=hits[0];source=first['source'];value=first['value'];cells=first['count']
+    more=''
+    if len(hits)>1:
+        more=f' ほか {len(hits)-1} 件の入力／値でも検出されています（詳細は run.json の failure_detail）。'
+    if first['role']=='internal':
+        ja=(f'入力点「{source}」に、内部で欠測の印として使う値（{value:g}）と一致する標高の点が {cells} 件あります。'
+            'この値は有効な標高として扱えないため、黙って欠測にせず処理を停止しました。'
+            f'この値が欠測を表すデータなら、元データの無効値（NODATA／source_nodata）に {value:g} を指定して再実行してください。')
+        en=(f'Input points in {source} have elevation {value:g} ({cells} point(s)), the value reserved as the '
+            'internal missing-value marker. Processing stopped instead of silently treating them as missing; '
+            f'if {value:g} marks missing data, specify it as the input NoData (NODATA / source_nodata) and re-run.')
+    else:
+        ja=(f'入力点「{source}」に、出力NoData値（{value:g}）と一致する標高の点が {cells} 件あります。'
+            '補間（IDW・平均・最低値のいずれでも）すると周辺セルの標高が汚染され、欠測とも区別できなくなるため、処理を停止しました。'
+            f'この値が欠測を表すデータなら、元データの無効値（NODATA／source_nodata）に {value:g} を指定し、'
+            '有効な標高なら別の出力NoData値を指定して、再実行してください。')
+        en=(f'Input points in {source} have elevation {value:g} ({cells} point(s)), equal to the output NoData value. '
+            'Interpolating them would contaminate neighbouring cells and make the result indistinguishable from '
+            f'missing data, so processing stopped. If {value:g} marks missing data, specify it as the input NoData '
+            '(NODATA / source_nodata); if it is a valid elevation, choose a different output NoData value and re-run.')
+    error=NoDataCollisionError(f'{ja}{more} ({en})')
+    error.detail=[dict(h) for h in hits]
+    return error
+
+
 def _invalid_raster_reason(path,exc):
     return (f'入力ラスターを読み込めません: {path}。ファイルが破損していないか、TIFF等の対応形式か、'
             f'単一バンドの標高データかを確認してください。GDAL詳細: {exc}')
