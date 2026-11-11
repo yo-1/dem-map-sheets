@@ -96,6 +96,11 @@ jobs:
       - name: Unit tests with real PDAL (includes the opt-in real-PDAL tests)
         shell: bash -el {0}
         run: REAL_PDAL_PATH="$(which pdal)" PYTHONPATH=. python -m unittest discover -s dem_map_sheets/tests -v
+      - name: Fixture generator for the Windows/QGIS verification (real PDAL)
+        shell: bash -el {0}
+        run: |
+          python validation/make_nodata_fixtures.py --pdal "$(which pdal)" --out "$RUNNER_TEMP/nodata_fixtures"
+          test "$(ls "$RUNNER_TEMP/nodata_fixtures" | wc -l)" -ge 16
       - name: Reproduce Issue #9 on the pre-fix baseline 2849ef4 (FAILURES ARE EXPECTED here)
         # Evidence only: the same real-PDAL tests run against the code before the
         # fix. Failing sub-tests show where the old code let a -9999 point
