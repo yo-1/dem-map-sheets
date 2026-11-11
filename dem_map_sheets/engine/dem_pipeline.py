@@ -7,7 +7,7 @@ import os
 import shutil
 import sys
 import numpy as np
-from .input_sources import DEFAULTS as INPUT_DEFAULTS, DEFAULT_OUTPUT_NODATA, NoUsableInputError, _invalid_raster_reason, crs_of, discover, output_nodata_of, prepare_inputs, proj_epsg_version, validate_input
+from .input_sources import DEFAULTS as INPUT_DEFAULTS, DEFAULT_OUTPUT_NODATA, NoDataCollisionError, NoUsableInputError, _invalid_raster_reason, crs_of, discover, nodata_collision_error, output_nodata_of, prepare_inputs, proj_epsg_version, validate_input
 from .map_sheets import intersecting_sheets, dimensions
 
 
@@ -82,8 +82,8 @@ def materialize_geotiff(source,dest,gdal,output_nodata=DEFAULT_OUTPUT_NODATA,not
                     missing=~finite
                 # Valid cells already equal to output_nodata cannot
                 # be told apart from missing ones once the band
-                # NoData is set; count them for the caller instead
-                # of silently reclassifying them.
+                # NoData is set; count them so the run can stop
+                # instead of silently reclassifying them (below).
                 collisions+=int((finite&~missing&(block==output_nodata)).sum())
                 if missing.any():
                     block=np.where(missing,output_nodata,block).astype('float32')
@@ -93,6 +93,13 @@ def materialize_geotiff(source,dest,gdal,output_nodata=DEFAULT_OUTPUT_NODATA,not
         upd.FlushCache();upd=None
         if notes is not None and collisions:
             notes.append({'source':str(source),'nodata_collision_cells':int(collisions)})
+        if collisions:
+            # Issue #8 independent audit (2026-11-11): never publish
+            # a file whose valid cells the new NoData metadata would
+            # reclassify as missing. Raising routes through the
+            # except below, which removes the temporary file, so the
+            # destination is never created.
+            raise nodata_collision_error(source,output_nodata,collisions)
         os.replace(tmp,dest)
     except BaseException:
         try:tmp.unlink()
@@ -554,6 +561,10 @@ def _run(config,output_dir,gdal,osr,feedback=None):
                 dest=source_dir/f'dem_{i:05d}.tif'
                 try:
                     materialized.append(materialize_geotiff(path,dest,gdal,out_nd,mat_notes))
+                except NoDataCollisionError:
+                    # A collision stop is a specification decision,
+                    # not an unreadable input: keep its message intact.
+                    raise
                 except Exception as exc:
                     raise ValueError(_invalid_raster_reason(path,exc)) from exc
                 if feedback is not None:feedback.setProgress(min(55,5+50*i/max(1,len(prepared['inputs']))))
@@ -565,19 +576,13 @@ def _run(config,output_dir,gdal,osr,feedback=None):
         # DEM: warn loudly, but do not fail the run - the cause may
         # be a legitimate (if useless) parameter combination.
         output_warnings=[]
-        # Materialize-time NoData collisions (passthrough inputs are
-        # not scanned by normalize, so this is their surfacing path;
-        # normalized inputs classify output-valued cells as missing
-        # already and produce none here).
-        if mat_notes:
-            output_warnings.append('nodata_value_collision')
-            total=sum(e['nodata_collision_cells'] for e in mat_notes)
-            if feedback is not None and hasattr(feedback,'pushWarning'):
-                feedback.pushWarning(
-                    f'入力DEMに、出力NoData値（{out_nd}）と一致する有効な標高セルが {total} 件あります。'
-                    'これらのセルは出力ではNoDataとして読み取られるため、必要に応じて出力NoData値を変更してください。'
-                    ' (Valid elevation cells equal to the output NoData value were found in the input; '
-                    'they will read as NoData in the output. See nodata_value_collisions in run.json.)')
+        # NoData collisions never reach this point as warnings:
+        # materialize_geotiff stops the run on any collision
+        # (passthrough inputs are not scanned by normalize, so
+        # materialization is their enforcement point; normalized
+        # inputs are stopped earlier, in prepare_inputs). mat_notes
+        # therefore stays empty on every successful run and the
+        # manifest field below remains an always-empty record.
         if not _has_valid_cells(merged,gdal):
             message=('出力DEMの全セルがNoDataです。入力の標高値が1つも反映されていません。'
                 'セルサイズが入力範囲に対して大きすぎる、入力と出力の座標系・範囲のずれ、'

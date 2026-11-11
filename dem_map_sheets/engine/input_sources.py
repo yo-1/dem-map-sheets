@@ -587,6 +587,29 @@ class NoUsableInputError(ValueError):
     nothing' apart from other input errors when skipping is on."""
 
 
+class NoDataCollisionError(ValueError):
+    """A valid input cell equals the configured output NoData value.
+
+    Raised instead of warning-and-continue (Issue #8 independent
+    audit, 2026-11-11): such a cell would be re-read as missing in
+    every deliverable, so the run stops and no successful product is
+    published. The enforcement points raise it outside the per-input
+    skip handlers, so skip_invalid_rasters never converts a
+    collision into a silent skip."""
+
+
+def nodata_collision_error(source, output_nodata, cells):
+    """The bilingual stop for a NoData collision: it names the input,
+    the colliding value and the detected cell count, and gives the
+    remedy (choose a different output NoData value and re-run)."""
+    return NoDataCollisionError(
+        f'出力NoData値（{output_nodata}）と一致する有効な標高セルが、入力「{source}」に {cells} 件あります。'
+        'このまま出力すると、それらのセルは欠測として読み取られてしまいます。'
+        '別の出力NoData値を指定して、再実行してください。'
+        f' (Valid elevation cells equal to the output NoData value ({output_nodata}) were found in '
+        f'{source}: {cells} cell(s). Processing stopped; specify a different output NoData value and re-run.)')
+
+
 def _invalid_raster_reason(path,exc):
     return (f'入力ラスターを読み込めません: {path}。ファイルが破損していないか、TIFF等の対応形式か、'
             f'単一バンドの標高データかを確認してください。GDAL詳細: {exc}')
@@ -825,13 +848,19 @@ def prepare_inputs(c,work,gdal,osr,feedback=None):
             raise ValueError('使用可能なDEMが見つかりません（No usable DEMs found (XML may contain metadata only)）')
         fold_notes()
         collisions=report.get('nodata_value_collisions') or []
-        if collisions and feedback is not None:
+        if collisions:
+            # Issue #8 independent audit (2026-11-11): warning-and-
+            # continue is not acceptable - a valid cell equal to the
+            # output NoData value would be re-read as missing in the
+            # deliverable. Stop here, after every source was scanned
+            # so the report names each colliding input; the except
+            # below records the run as failed in input_report.json.
             total=sum(e['nodata_collision_cells'] for e in collisions)
-            feedback.pushWarning(
-                f'入力DEMに、出力NoData値（{output_nodata_of(c)}）と一致する有効な標高セルが {total} 件あります。'
-                'これらのセルは出力ではNoDataとして読み取られるため、必要に応じて出力NoData値を変更してください。'
-                f' (Valid elevation cells equal to the output NoData value were found in the input; '
-                'they will read as NoData in the output. See nodata_value_collisions in run.json.)')
+            error=nodata_collision_error(collisions[0]['source'],output_nodata_of(c),total)
+            if len(collisions)>1:
+                error=NoDataCollisionError(str(error)+
+                    f' ほか {len(collisions)-1} 件の入力でも衝突が検出されています（詳細は input_report.json の nodata_value_collisions）。')
+            raise error
         report.update(status='completed',prepared_rasters=outputs);save()
         return {**c,'inputs':outputs,'source_nodata':None},report
     except BaseException as exc:

@@ -8,9 +8,9 @@ import shutil
 import subprocess  # nosec B404: PDAL CLI requires an external process
 import time
 try:
-    from .input_sources import cancelled, say, crs_of, text_rows, DEFAULT_OUTPUT_NODATA
+    from .input_sources import cancelled, say, crs_of, text_rows, NODATA
 except ImportError:
-    from input_sources import cancelled, say, crs_of, text_rows, DEFAULT_OUTPUT_NODATA
+    from input_sources import cancelled, say, crs_of, text_rows, NODATA
 
 
 def executable(c):
@@ -142,6 +142,20 @@ def inspect_sources(c,work,exe,osr,feedback,staged_out=None,pdal_root=None):
             with cleaned.open('w',encoding='ascii',newline='') as f:
                 f.write('X,Y,Z\n')
                 for x,y,z in text_rows(path,c,feedback):
+                    if z==NODATA:
+                        # A point at the internal sentinel value
+                        # would be indistinguishable from an empty
+                        # cell in the rasterized block. Do not guess
+                        # that it means "missing": stop and let the
+                        # user declare it via source_nodata (points
+                        # equal to source_nodata are already skipped
+                        # inside text_rows, so they never reach here).
+                        raise ValueError(
+                            f'入力点に標高 {NODATA:g} の点が含まれています: {path}。'
+                            'この値は欠測の印として使われる内部値で、このままでは欠測セルと区別できません。'
+                            f'元データの無効値（source_nodata）に {NODATA:g} を指定してください。'
+                            f' (A point elevation equals the internal missing-value sentinel {NODATA:g}; '
+                            'specify source_nodata for the input if it marks missing data.)')
                     f.write(f'{x:.15g},{y:.15g},{z:.15g}\n');count+=1
                     xmin=min(xmin,x);xmax=max(xmax,x);ymin=min(ymin,y);ymax=max(ymax,y)
             if not count:raise ValueError('No valid text points: '+path)
@@ -175,7 +189,6 @@ def inspect_sources(c,work,exe,osr,feedback,staged_out=None,pdal_root=None):
 def build_pipeline(records,bounds,c,destination,classified_path=None):
     """Explicit tags keep independent reader branches from inheriting each other."""
     cell=c['cell_size'];auto=c['input_type']=='lidar' and c['lidar_mode']=='auto'
-    out_nd=float(c.get('output_nodata',DEFAULT_OUTPUT_NODATA))
     halo=math.ceil((c['point_radius']+(2*c['smrf_window'] if auto else 0))/cell)+2
     west,south,east,north=bounds
     extended=(west-halo*cell,south-halo*cell,east+halo*cell,north+halo*cell)
@@ -207,10 +220,18 @@ def build_pipeline(records,bounds,c,destination,classified_path=None):
                 offset_x='auto',offset_y='auto',offset_z='auto'))
         pipeline.append(dict(type='filters.expression',expression='Classification == 2',inputs=['CLASSIFIED'],tag='GROUND'))
         tags=['GROUND']
+    # The writer marks EMPTY cells with the internal sentinel, never
+    # with the output NoData value (Issue #8 audit follow-up): a data
+    # cell equal to the output value then survives in the block as
+    # data, and materialize_geotiff - which converts the sentinel to
+    # the output value - detects it as a collision and stops the run,
+    # giving point inputs the same stop guarantee as raster inputs.
+    # Only a value equal to the sentinel itself stays
+    # indistinguishable from an empty cell (documented limitation).
     pipeline.append(dict(type='writers.gdal',filename=str(destination),inputs=tags,
         resolution=cell,origin_x=extended[0],origin_y=extended[1],
         width=round((east-west)/cell)+2*halo,height=round((north-south)/cell)+2*halo,
-        radius=c['point_radius'],output_type=c['point_method'],window_size=0,nodata=out_nd,
+        radius=c['point_radius'],output_type=c['point_method'],window_size=0,nodata=NODATA,
         data_type='float',gdaldriver='GTiff',gdalopts='TILED=YES,COMPRESS=DEFLATE,BIGTIFF=IF_SAFER',
         override_srs=c['target_crs'],allow_empty=True))
     return {'pipeline':pipeline},halo
@@ -222,7 +243,6 @@ def _points_to_rasters(c,work,gdal,osr,feedback,exe,staged,pdal_root):
     match=re.search(r'\b(\d+)\.(\d+)\.(\d+)\b',version)
     if not match or tuple(map(int,match.groups()))<(2,9,0):
         raise ValueError('PDAL >=2.9 is required for point processing')
-    out_nd=float(c.get('output_nodata',DEFAULT_OUTPUT_NODATA))
     # c['inputs'] is the validated QGIS selection.  Do not consult a config
     # file, remembered path or test default at any point in point processing.
     records,_returned_staged=inspect_sources(c,work,exe,osr,feedback,staged,pdal_root=pdal_root)
@@ -290,7 +310,7 @@ def _points_to_rasters(c,work,gdal,osr,feedback,exe,staged,pdal_root):
         a=ds.GetRasterBand(1).ReadAsArray(halo,halo,size,size)
         import numpy as np
         if a is None:raise RuntimeError('PDAL DEM read failed')
-        if np.any(np.isfinite(a)&(a!=out_nd)):
+        if np.any(np.isfinite(a)&(a!=NODATA)):
             dest=work/f'{name}.tif'
             output=gdal.Translate(str(dest),ds,srcWin=[halo,halo,size,size],format='GTiff',
                 creationOptions=['TILED=YES','COMPRESS=DEFLATE','BIGTIFF=IF_SAFER'])
