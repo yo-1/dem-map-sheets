@@ -1,0 +1,28 @@
+name: Real PDAL verification
+# Runs the PDAL-dependent tests against a REAL pdal (conda-forge, the
+# environment defined by dem_map_sheets/environment-pointcloud.yml).
+# Manual only: the normal CI uses a mocked PDAL.
+on:
+  workflow_dispatch:
+permissions:
+  contents: read
+jobs:
+  real-pdal:
+    runs-on: ubuntu-24.04
+    steps:
+      - uses: actions/checkout@v7
+        with:
+          persist-credentials: false
+      - uses: mamba-org/setup-micromamba@v2
+        with:
+          environment-name: dem-pointcloud
+          environment-file: dem_map_sheets/environment-pointcloud.yml
+          init-shell: bash
+      - name: Versions
+        shell: bash -el {0}
+        run: |
+          pdal --version
+          python -c "from osgeo import gdal; print('GDAL', gdal.__version__)"
+      - name: PDAL probe
+        shell: bash -el {0}
+        run: REAL_PDAL_PATH="$(which pdal)" python validation/pdal_probe.py
