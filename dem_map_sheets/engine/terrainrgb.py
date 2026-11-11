@@ -8,8 +8,12 @@ import math
 from pathlib import Path
 import numpy as np
 
+try:
+    from ._constants import NODATA, DEFAULT_OUTPUT_NODATA
+except ImportError:
+    from _constants import NODATA, DEFAULT_OUTPUT_NODATA
+
 HALF_WORLD = 20037508.342789244
-NODATA = -999999.0
 
 
 def encode_elevation(values, valid=None):

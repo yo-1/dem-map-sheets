@@ -11,13 +11,15 @@ import time
 import zipfile
 import numpy as np
 try:
+    from ._constants import NODATA, DEFAULT_OUTPUT_NODATA
+except ImportError:
+    from _constants import NODATA, DEFAULT_OUTPUT_NODATA
+try:
     from .gsi_dem import parse_dem
     from .forest_dem import expand_sources, classify_sources, read_lem, autodetect_xyz
 except ImportError:
     from gsi_dem import parse_dem
     from forest_dem import expand_sources, classify_sources, read_lem, autodetect_xyz
-
-NODATA = -999999.0
 DEFAULTS = dict(input_type='raster', recursive=True, normalize_rasters=False,
     skip_invalid_rasters=False,
     input_crs='', vertical_reference='', text_delimiter='comma', text_encoding='utf-8-sig',
