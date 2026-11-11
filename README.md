@@ -8,6 +8,6 @@ QGIS 3.44〜3.99向けのDEM作成・統合・TerrainRGB XYZプラグイン。GP
 
 ## NoData仕様（次期版で変更）
 
-出力DEMのNoData値は設定可能になりました（パラメータ `OUTPUT_NODATA`／設定キー `output_nodata`、既定 -9999、Float32で正確に表せる有限値のみ）。入力側の欠測判定は入力自身の定義（バンドNoData、source_nodata、形式定義）のみで行い、値の推測はしません。NaN・±inf セルは欠測として扱われ、出力NoData値に変換されます。出力NoData値と一致する有効セルが入力にある場合は、件数を数えて警告し run.json に記録します。詳細は dem_map_sheets/README_ja.md の「重要な注意」を参照してください。
+出力DEMのNoData値は設定可能になりました（パラメータ `OUTPUT_NODATA`／設定キー `output_nodata`、既定 -9999、Float32で正確に表せる有限値のみ）。入力側の欠測判定は入力自身の定義（バンドNoData、source_nodata、形式定義）のみで行い、値の推測はしません。NaN・±inf セルは欠測として扱われ、出力NoData値に変換されます。出力NoData値と一致する有効セルが入力にある場合は、そのセルが出力で欠測と誤認されるため、対象入力・衝突値・件数を示してエラーで停止します（警告のみで続行はしません）。詳細は dem_map_sheets/README_ja.md の「重要な注意」を参照してください。
 
 合成データ検証は GitHub Actions（Synthetic DEM validation）で push／PR のたびに実行されており、GDAL 回転ラスタ等の回帰テスト（validation/test_gdal_edges.py）も含みます。Windows 実機での検証結果も validation/TEST_RECORD.md に記録しています。
