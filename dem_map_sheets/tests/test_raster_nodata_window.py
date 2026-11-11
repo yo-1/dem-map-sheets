@@ -31,11 +31,15 @@ sys.path.insert(0, str(Path(__file__).resolve().parent))
 from input_fixtures import have_gdal, make_geotiff  # noqa: E402
 
 HAVE_GDAL = have_gdal()
+nodata_window = None
 if HAVE_GDAL:
     from osgeo import gdal, osr
-    from dem_map_sheets.engine._constants import nodata_window
     from dem_map_sheets.engine.dem_pipeline import materialize_geotiff, run
     from dem_map_sheets.engine.input_sources import DEFAULTS, NoDataCollisionError
+    try:
+        from dem_map_sheets.engine._constants import nodata_window
+    except ImportError:  # pre-fix code (33e370a) has no window: the reproduction tests still run there
+        nodata_window = None
 
 # the seven values of the Windows report; the first four were lost
 LOST = [-9999.0005, -9999.002, -9999.004, -9998.996]
@@ -258,7 +262,7 @@ class NanAndPriorityRegressionTests(RasterNearNoDataCase):
         np.testing.assert_array_equal(array[5, 2:7], np.array([-9998.5, -9999.5, 0.0, -0.001, 1234.5], 'float32'))
 
 
-@unittest.skipUnless(HAVE_GDAL, 'GDAL (osgeo) is not available')
+@unittest.skipUnless(HAVE_GDAL and nodata_window is not None, 'GDAL or the NoData window is not available')
 class WindowCoversInstalledGdalTests(unittest.TestCase):
     """The collision window must contain every value the INSTALLED GDAL reads as NoData.
     Measured through BuildVRT srcNodata, Warp srcNodata and the GTiff mask band."""
