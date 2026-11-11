@@ -74,6 +74,12 @@ jobs:
       - uses: actions/checkout@v7
         with:
           persist-credentials: false
+      - name: Checkout the pre-fix baseline (2849ef4) for the reproduction step
+        uses: actions/checkout@v7
+        with:
+          ref: 2849ef4cd0c072c57d77b635bf68ef7d788a5a75
+          path: baseline
+          persist-credentials: false
       - uses: mamba-org/setup-micromamba@v2
         with:
           environment-name: dem-pointcloud
@@ -90,3 +96,15 @@ jobs:
       - name: Unit tests with real PDAL (includes the opt-in real-PDAL tests)
         shell: bash -el {0}
         run: REAL_PDAL_PATH="$(which pdal)" PYTHONPATH=. python -m unittest discover -s dem_map_sheets/tests -v
+      - name: Reproduce Issue #9 on the pre-fix baseline 2849ef4 (FAILURES ARE EXPECTED here)
+        # Evidence only: the same real-PDAL tests run against the code before the
+        # fix. Failing sub-tests show where the old code let a -9999 point
+        # (IDW/mean) or a LAS -999999 point through. continue-on-error keeps
+        # the job green; read this step's log, not its status.
+        continue-on-error: true
+        shell: bash -el {0}
+        run: |
+          cp dem_map_sheets/tests/test_real_pdal_nodata.py baseline/dem_map_sheets/tests/
+          cd baseline
+          REAL_PDAL_PATH="$(which pdal)" PYTHONPATH=. python -m unittest -v \
+            dem_map_sheets.tests.test_real_pdal_nodata.CollisionStopTests 2>&1 || true
