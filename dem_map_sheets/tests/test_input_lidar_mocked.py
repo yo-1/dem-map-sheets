@@ -345,7 +345,7 @@ class PipelineContractTests(LidarCase):
         self.assertEqual(writer['width'], 64 + 2 * halo)
         self.assertEqual((writer['origin_x'], writer['origin_y']), (100.0 - halo, 200.0 - halo))
         self.assertEqual(writer['resolution'], 1.0)
-        self.assertEqual(writer['nodata'], -999999.0)
+        self.assertEqual(writer['nodata'], -999999.0)  # writers.gdal marks empty cells with the internal sentinel, never the output NoData value, so output-valued data cells stay detectable as collisions at materialization (Issue #8 audit)
         self.assertEqual(writer['output_type'], 'idw')
         self.assertTrue(writer['allow_empty'])
 

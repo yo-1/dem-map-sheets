@@ -60,6 +60,8 @@ class DEMMapSheetsAlgorithm(QgsProcessingAlgorithm):
         self.addParameter(QgsProcessingParameterString('VERTICAL','標高基準の追加入力（選択より優先）',defaultValue='',optional=True))
         self.addParameter(QgsProcessingParameterNumber('NODATA','入力NoData値（空欄は入力定義を使用）',
             QgsProcessingParameterNumber.Type.Double, optional=True))
+        self.addParameter(QgsProcessingParameterNumber('OUTPUT_NODATA','出力DEMのNoData値',
+            QgsProcessingParameterNumber.Type.Double, defaultValue=-9999.0))
         self.addParameter(QgsProcessingParameterEnum('MERGE_PRIORITY','重複時の優先順',
             ['後に並ぶ入力を優先','先に並ぶ入力を優先','自動判定（計測年度→精度→グラウンド点密度→2500図郭充足率）'],defaultValue=2))
         self.addParameter(QgsProcessingParameterFile('PRIORITY_METADATA','自動優先用メタデータCSV/JSON（任意）',
@@ -140,7 +142,8 @@ class DEMMapSheetsAlgorithm(QgsProcessingAlgorithm):
         c=dict(inputs=paths,input_type=mode,recursive=self.parameterAsBool(parameters,'RECURSIVE',context),
             normalize_rasters=True,input_crs=source_crs.toWkt() if source_set else '',target_crs=target.toWkt(),
             vertical_reference=vertical,cell_size=self.parameterAsDouble(parameters,'CELL',context),
-            source_nodata=nd,max_pixels=25000000,max_input_pixels=25000000,max_input_files=100000,
+            source_nodata=nd,output_nodata=self.parameterAsDouble(parameters,'OUTPUT_NODATA',context),
+            max_pixels=25000000,max_input_pixels=25000000,max_input_files=100000,
             lidar_mode=['classified','ground_only','auto'][self.parameterAsEnum(parameters,'LIDAR_MODE',context)],
             ground_classes=classes,pdal_path=self.parameterAsFile(parameters,'PDAL',context),
             point_method=['idw','mean','min'][self.parameterAsEnum(parameters,'POINT_METHOD',context)],
@@ -171,7 +174,8 @@ class DEMMapSheetsAlgorithm(QgsProcessingAlgorithm):
                 xyz=str(result_dir/'03_terrainrgb_xyz')
                 info=write_terrainrgb_xyz(manifest['merged_dem'],xyz,
                     self.parameterAsInt(parameters,'XYZ_MIN',context),self.parameterAsInt(parameters,'XYZ_MAX',context),
-                    self.parameterAsInt(parameters,'XYZ_LIMIT',context),gdal,osr,feedback)
+                    self.parameterAsInt(parameters,'XYZ_LIMIT',context),gdal,osr,feedback,
+                    nodata=manifest['output_nodata'])
                 manifest['terrainrgb_xyz']=info
                 (result_dir/'run.json').write_text(json.dumps(manifest,ensure_ascii=False,indent=2),encoding='utf-8')
             feedback.setProgress(100)

@@ -7,7 +7,7 @@ import os
 import shutil
 import sys
 import numpy as np
-from .input_sources import DEFAULTS as INPUT_DEFAULTS, NoUsableInputError, _invalid_raster_reason, crs_of, discover, prepare_inputs, proj_epsg_version, validate_input, NODATA
+from .input_sources import DEFAULTS as INPUT_DEFAULTS, DEFAULT_OUTPUT_NODATA, NoDataCollisionError, NoUsableInputError, _invalid_raster_reason, crs_of, discover, nodata_collision_error, output_nodata_of, prepare_inputs, proj_epsg_version, validate_input
 from .map_sheets import intersecting_sheets, dimensions
 
 
@@ -36,16 +36,70 @@ def gtiff_options():
     return ['TILED=YES','COMPRESS=DEFLATE','PREDICTOR=3','BIGTIFF=IF_SAFER']
 
 
-def materialize_geotiff(source,dest,gdal):
+def materialize_geotiff(source,dest,gdal,output_nodata=DEFAULT_OUTPUT_NODATA,notes=None):
     # Write to a temporary sibling and rename, so a failure can never
     # leave a partial file at the final path (deliverable protection:
     # every output file is complete-or-absent).
+    output_nodata=float(output_nodata)
+    # Capture the source's own NoData definitions before Translate
+    # overwrites them; if the source cannot be inspected at all,
+    # Translate fails with the real error just below, exactly as it
+    # did before the value rewrite existed.
+    src_nodatas=None
+    try:
+        src=gdal.Open(str(source))
+        if src is not None:
+            src_nodatas=[src.GetRasterBand(i+1).GetNoDataValue() for i in range(src.RasterCount)]
+    except Exception:
+        src_nodatas=None
+    src=None
     dest=Path(dest);tmp=dest.with_name(dest.name+'.part')
     try:
         ds=gdal.Translate(str(tmp),str(source),format='GTiff',outputType=gdal.GDT_Float32,
-            noData=NODATA,creationOptions=gtiff_options())
+            noData=output_nodata,creationOptions=gtiff_options())
         if ds is None: raise RuntimeError('GeoTIFF creation failed: '+str(dest))
         ds.FlushCache();ds=None
+        # Translate rewrites only the NoData *metadata*: the cells
+        # still carry the source's missing value, which downstream
+        # would read as valid elevations (audit P2). Rewrite the
+        # values themselves - cells missing under the source's own
+        # definition, and non-finite cells (NaN/inf are not
+        # elevations), become output_nodata. Array rewriting is used
+        # because Translate alone cannot remap values.
+        upd=gdal.Open(str(tmp),gdal.GA_Update)
+        if upd is None: raise RuntimeError('GeoTIFF creation failed: '+str(dest))
+        collisions=0
+        for band_index in range(1,upd.RasterCount+1):
+            band=upd.GetRasterBand(band_index)
+            src_nodata=src_nodatas[band_index-1] if src_nodatas is not None else None
+            for y in range(0,band.YSize,512):
+                block=band.ReadAsArray(0,y,band.XSize,min(512,band.YSize-y))
+                if block is None: raise RuntimeError('GeoTIFF creation failed: '+str(dest))
+                finite=np.isfinite(block)
+                if src_nodata is not None and math.isfinite(src_nodata):
+                    missing=~finite|(block==src_nodata)
+                else:
+                    missing=~finite
+                # Valid cells already equal to output_nodata cannot
+                # be told apart from missing ones once the band
+                # NoData is set; count them so the run can stop
+                # instead of silently reclassifying them (below).
+                collisions+=int((finite&~missing&(block==output_nodata)).sum())
+                if missing.any():
+                    block=np.where(missing,output_nodata,block).astype('float32')
+                    if band.WriteArray(block,0,y)!=0:
+                        raise RuntimeError('GeoTIFF creation failed: '+str(dest))
+            band.SetNoDataValue(output_nodata)
+        upd.FlushCache();upd=None
+        if notes is not None and collisions:
+            notes.append({'source':str(source),'nodata_collision_cells':int(collisions)})
+        if collisions:
+            # Issue #8 independent audit (2026-11-11): never publish
+            # a file whose valid cells the new NoData metadata would
+            # reclassify as missing. Raising routes through the
+            # except below, which removes the temporary file, so the
+            # destination is never created.
+            raise nodata_collision_error(source,output_nodata,collisions)
         os.replace(tmp,dest)
     except BaseException:
         try:tmp.unlink()
@@ -120,22 +174,24 @@ def _record_failure(out,work,config,exc,feedback):
         print(f'run.json への失敗記録に失敗しました: {record_exc}',file=sys.stderr)
 
 
-def merge_geotiffs(inputs,dest,gdal,first_wins=False,output_bounds=None,width=None,height=None):
+def merge_geotiffs(inputs,dest,gdal,first_wins=False,output_bounds=None,width=None,height=None,
+                   output_nodata=DEFAULT_OUTPUT_NODATA):
+    output_nodata=float(output_nodata)
     ordered=list(reversed(inputs)) if first_wins else list(inputs)
     vrt_path=Path(dest).with_suffix('.vrt')
     try:
-        vrt=gdal.BuildVRT(str(vrt_path),ordered,srcNodata=NODATA,VRTNodata=NODATA,
+        vrt=gdal.BuildVRT(str(vrt_path),ordered,srcNodata=output_nodata,VRTNodata=output_nodata,
                           resolution='highest',strict=True)
         if vrt is None: raise RuntimeError('DEM mosaic VRT creation failed')
         vrt.FlushCache();vrt=None
         if output_bounds is not None:
             # Translate outputBounds assigns georeferencing; Warp actually clips.
             ds=gdal.Warp(str(dest),str(vrt_path),format='GTiff',outputType=gdal.GDT_Float32,
-                dstNodata=NODATA,creationOptions=gtiff_options(),outputBounds=output_bounds,
+                dstNodata=output_nodata,creationOptions=gtiff_options(),outputBounds=output_bounds,
                 width=width,height=height,resampleAlg='near',errorThreshold=0)
         else:
             ds=gdal.Translate(str(dest),str(vrt_path),format='GTiff',outputType=gdal.GDT_Float32,
-                noData=NODATA,creationOptions=gtiff_options())
+                noData=output_nodata,creationOptions=gtiff_options())
         if ds is None: raise RuntimeError('GeoTIFF creation failed: '+str(dest))
         ds.FlushCache();ds=None
         return str(dest)
@@ -229,23 +285,24 @@ def _union_bounds(paths,gdal):
     return (min(b[0] for b in values),min(b[1] for b in values),max(b[2] for b in values),max(b[3] for b in values))
 
 
-def _group_vrt(paths,path,gdal):
-    vrt=gdal.BuildVRT(str(path),paths,srcNodata=NODATA,VRTNodata=NODATA,resolution='highest',strict=True)
+def _group_vrt(paths,path,gdal,output_nodata=DEFAULT_OUTPUT_NODATA):
+    vrt=gdal.BuildVRT(str(path),paths,srcNodata=float(output_nodata),VRTNodata=float(output_nodata),resolution='highest',strict=True)
     if vrt is None: raise RuntimeError('Source-group VRT creation failed')
     vrt.FlushCache();vrt=None
     return str(path)
 
 
-def _coverage_for_sheet(path,sheet,cell,gdal):
+def _coverage_for_sheet(path,sheet,cell,gdal,output_nodata=DEFAULT_OUTPUT_NODATA):
+    output_nodata=float(output_nodata)
     width=int(round((sheet.east-sheet.west)/cell));height=int(round((sheet.north-sheet.south)/cell))
     if width<=0 or height<=0: raise ValueError('Invalid sheet/cell dimensions')
     mem=gdal.Warp('',str(path),format='MEM',outputBounds=(sheet.west,sheet.south,sheet.east,sheet.north),
-                  width=width,height=height,outputType=gdal.GDT_Float32,dstNodata=NODATA,
+                  width=width,height=height,outputType=gdal.GDT_Float32,dstNodata=output_nodata,
                   resampleAlg='near',errorThreshold=0)
     if mem is None:return 0.0
     a=mem.GetRasterBand(1).ReadAsArray();nd=mem.GetRasterBand(1).GetNoDataValue();mem=None
     if a is None:return 0.0
-    valid=np.isfinite(a)&(a!=(nd if nd is not None else NODATA))
+    valid=np.isfinite(a)&(a!=(nd if nd is not None else output_nodata))
     return float(valid.sum()/valid.size)
 
 
@@ -308,10 +365,11 @@ def _prepare_source_groups(c,work,source_dir,gdal,osr,feedback=None):
             dropped.append({'source':str(source),'dropped':True,
                             'ignored':[{'path':str(source),'reason':str(exc)}]})
             continue
-        rasters=[]
+        rasters=[];group_notes=[]
         for path in prepared['inputs']:
             counter+=1;dest=source_dir/f'dem_{counter:05d}.tif'
-            rasters.append(materialize_geotiff(path,dest,gdal))
+            rasters.append(materialize_geotiff(path,dest,gdal,output_nodata_of(c),group_notes))
+        if group_notes:report.setdefault('nodata_value_collisions',[]).extend(group_notes)
         auto_year=_report_year(report)
         if meta['survey_year'] is None and auto_year is not None:meta['survey_year']=auto_year
         # When input is explicitly ground-only point data, raw point count / bounds area is a valid ground density.
@@ -324,7 +382,7 @@ def _prepare_source_groups(c,work,source_dir,gdal,osr,feedback=None):
             target=osr.SpatialReference();target.SetFromUserInput(c['target_crs'])
             if len(dens)==1 and target.IsProjected() and abs(target.GetLinearUnits()-1.0)<1e-9:
                 meta['ground_density']=dens[0]
-        group_vrt=_group_vrt(rasters,work/f'source_{source_index:05d}.vrt',gdal)
+        group_vrt=_group_vrt(rasters,work/f'source_{source_index:05d}.vrt',gdal,output_nodata_of(c))
         groups.append(dict(source=source,rasters=rasters,vrt=group_vrt,metadata=meta,input_report=report))
     if not groups:
         raise NoUsableInputError('使用可能なDEMが見つかりません（No usable DEMs found）: '
@@ -345,14 +403,14 @@ def _merge_auto(c,groups,out,gdal,osr,feedback=None):
         if feedback is not None and feedback.isCanceled():raise RuntimeError('Cancelled（処理がキャンセルされました。途中まで生成された出力ファイルは不完全なため、使用しないでください）')
         scored=[]
         for i,g in enumerate(groups):
-            coverage=_coverage_for_sheet(g['vrt'],sheet,cell,gdal)
+            coverage=_coverage_for_sheet(g['vrt'],sheet,cell,gdal,output_nodata_of(c))
             if coverage>0:
                 scored.append((priority_key(g['metadata'],coverage),i,coverage))
         if not scored:continue
         scored.sort()
         ordered=[groups[i]['vrt'] for _,i,_ in scored]  # low -> high; GDAL VRT last valid pixel wins
         dest=sheet_dir/f'{sheet.code}.tif'
-        merge_geotiffs(ordered,dest,gdal,False,(sheet.west,sheet.south,sheet.east,sheet.north),width,height)
+        merge_geotiffs(ordered,dest,gdal,False,(sheet.west,sheet.south,sheet.east,sheet.north),width,height,output_nodata_of(c))
         written.append(str(dest))
         ranking=[]
         for rank,(_,i,coverage) in enumerate(reversed(scored),1):
@@ -364,7 +422,7 @@ def _merge_auto(c,groups,out,gdal,osr,feedback=None):
             feedback.pushInfo(f'Priority sheet {sheet.code}: {Path(ranking[0]["source"]).name}')
             feedback.setProgress(min(65,10+55*number/max(1,len(candidates))))
     if not written:raise ValueError('Automatic priority produced no nonempty map sheets（自動優先順位の結果、対象範囲に重なる図郭が1件もありませんでした。入力DEMの範囲と座標系が対象地域に合っているか、優先順位メタデータの対象範囲を確認してください）')
-    merged=merge_geotiffs(written,out/'02_merged_dem.tif',gdal,False)
+    merged=merge_geotiffs(written,out/'02_merged_dem.tif',gdal,False,output_nodata=output_nodata_of(c))
     return merged,dict(mode='automatic',plane_zone=zone,sheet_level=2500,
         criteria=['survey_year_desc','accuracy_m_asc','ground_density_desc','sheet_coverage_desc'],
         missing_values='known values outrank unknown values at each criterion',sheet_count=len(written),decisions=decisions)
@@ -472,7 +530,9 @@ def _run(config,output_dir,gdal,osr,feedback=None):
             ja={'cell_size':'セルサイズ','target_crs':'対象CRS'}[key]
             raise ValueError(f'{key} is required（{ja}を指定してください）')
     c.setdefault('max_pixels',25000000)
+    c.setdefault('output_nodata',DEFAULT_OUTPUT_NODATA)
     validate_input(c)
+    out_nd=output_nodata_of(c)
     # CRS validation depth (r5): reject an unparseable, compound or
     # 3D target CRS here, before any directory or GDAL work, instead
     # of failing midway through PDAL/GDAL processing.
@@ -484,6 +544,7 @@ def _run(config,output_dir,gdal,osr,feedback=None):
     out=Path(output_dir);out.mkdir(parents=True,exist_ok=False)
     work=out/'work';source_dir=out/'01_source_dem';source_dir.mkdir()
     c['inputs']=discover(c['inputs'],'',c,feedback)
+    mat_notes=[]
     try:
         mode=config.get('merge_priority','last')
         if mode=='auto':
@@ -494,16 +555,20 @@ def _run(config,output_dir,gdal,osr,feedback=None):
             report={'mode':'per_source','sources':[g['input_report'] for g in groups]+dropped}
         else:
             prepared,report=prepare_inputs(c,work,gdal,osr,feedback)
-            materialized=[]
+            materialized=[];mat_notes=[]
             for i,path in enumerate(prepared['inputs'],1):
                 if feedback is not None and feedback.isCanceled():raise RuntimeError('Cancelled（処理がキャンセルされました。途中まで生成された出力ファイルは不完全なため、使用しないでください）')
                 dest=source_dir/f'dem_{i:05d}.tif'
                 try:
-                    materialized.append(materialize_geotiff(path,dest,gdal))
+                    materialized.append(materialize_geotiff(path,dest,gdal,out_nd,mat_notes))
+                except NoDataCollisionError:
+                    # A collision stop is a specification decision,
+                    # not an unreadable input: keep its message intact.
+                    raise
                 except Exception as exc:
                     raise ValueError(_invalid_raster_reason(path,exc)) from exc
                 if feedback is not None:feedback.setProgress(min(55,5+50*i/max(1,len(prepared['inputs']))))
-            merged=merge_geotiffs(materialized,out/'02_merged_dem.tif',gdal,first_wins=(mode=='first'))
+            merged=merge_geotiffs(materialized,out/'02_merged_dem.tif',gdal,first_wins=(mode=='first'),output_nodata=out_nd)
             priority_report={'mode':mode}
         # An output with no valid cells at all (e.g. a 5x5 m input
         # rendered at a 10 m cell, whose single output pixel centre
@@ -511,6 +576,13 @@ def _run(config,output_dir,gdal,osr,feedback=None):
         # DEM: warn loudly, but do not fail the run - the cause may
         # be a legitimate (if useless) parameter combination.
         output_warnings=[]
+        # NoData collisions never reach this point as warnings:
+        # materialize_geotiff stops the run on any collision
+        # (passthrough inputs are not scanned by normalize, so
+        # materialization is their enforcement point; normalized
+        # inputs are stopped earlier, in prepare_inputs). mat_notes
+        # therefore stays empty on every successful run and the
+        # manifest field below remains an always-empty record.
         if not _has_valid_cells(merged,gdal):
             message=('出力DEMの全セルがNoDataです。入力の標高値が1つも反映されていません。'
                 'セルサイズが入力範囲に対して大きすぎる、入力と出力の座標系・範囲のずれ、'
@@ -525,7 +597,8 @@ def _run(config,output_dir,gdal,osr,feedback=None):
             'warnings':output_warnings,
             'source_dems':materialized,'merged_dem':merged,'target_crs':c['target_crs'],'cell_size':c['cell_size'],
             'vertical_reference':c['vertical_reference'],'vertical_conversion':False,'merge_priority':mode,
-            'priority_selection':priority_report,'input_report':report,'output_nodata':NODATA,
+            'priority_selection':priority_report,'input_report':report,'output_nodata':out_nd,
+            'nodata_value_collisions':mat_notes,
             'source_datum_label':datum_labels[0] if len(datum_labels)==1 else (datum_labels or None),
             'proj_epsg_version':proj_epsg_version(osr),
             'work_retained':'all' if config.get('keep_work') else 'none'}

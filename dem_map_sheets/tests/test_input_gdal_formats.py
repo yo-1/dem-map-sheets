@@ -28,7 +28,8 @@ if HAVE_GDAL:
     from osgeo import gdal, osr
     from dem_map_sheets.engine.dem_pipeline import run
     from dem_map_sheets.engine.input_sources import (
-        DEFAULTS, NODATA, crs_of, has_world_file, prepare_inputs, text_grid)
+        DEFAULTS, DEFAULT_OUTPUT_NODATA, NODATA, crs_of, has_world_file,
+        prepare_inputs, text_grid)
 
 # GDAL raises RuntimeError (UseExceptions) or the plugin raises ValueError;
 # the plugin enables UseExceptions in algorithm.py, so both are legitimate.
@@ -76,6 +77,11 @@ class GdalCase(unittest.TestCase):
 
     def assertNoData(self, array, mask):
         np.testing.assert_array_equal(array == NODATA, mask)
+
+    def assertOutputNoData(self, array, mask):
+        # Prepared (normalized) rasters carry the pipeline's output
+        # NoData (the default below), not the internal sentinel.
+        np.testing.assert_array_equal(array == DEFAULT_OUTPUT_NODATA, mask)
 
 
 # ------------------------------------------------------------------ CRS handling
@@ -130,10 +136,10 @@ class GeoTiffTests(GdalCase):
         tif = make_geotiff(self.root / 'a.tif', values)
         array, gt, nodata, srs, _ = self.prepare_first('raster', [tif], input_crs='')
         self.assertEqual(gt, (1000.0, 10.0, 0.0, 2030.0, 0.0, -10.0))
-        self.assertEqual(nodata, NODATA)
+        self.assertEqual(nodata, DEFAULT_OUTPUT_NODATA)
         self.assertEqual(srs.GetAuthorityCode(None), '6677')
         expected = values.copy()
-        expected[1, 2] = NODATA
+        expected[1, 2] = DEFAULT_OUTPUT_NODATA
         np.testing.assert_array_equal(array, expected)
 
     def test_source_nodata_override_for_rasters_without_a_definition(self):
@@ -142,14 +148,16 @@ class GeoTiffTests(GdalCase):
         with self.assertRaisesRegex(ValueError, 'no NoData definition'):
             self.prepare('raster', [tif], input_crs='')
         array, *_ = self.prepare_first('raster', [tif], input_crs='', source_nodata=-32768.0)
-        self.assertNoData(array, values == -32768)
+        self.assertOutputNoData(array, values == -32768)
 
     def test_nonfinite_pixels_never_become_numeric_elevations(self):
         values = np.array([[1, np.nan, np.inf, 4]] * 3, dtype='float32')
         tif = make_geotiff(self.root / 'nf.tif', values)
         array, *_ = self.prepare_first('raster', [tif], input_crs='')
         bad = array[:, 1:3]
-        self.assertTrue(np.all(~np.isfinite(bad) | (bad == NODATA)))
+        # NaN and +/-inf are not elevations: both become the output
+        # NoData value exactly, never a surviving non-finite number.
+        self.assertTrue(np.all(bad == DEFAULT_OUTPUT_NODATA))
 
     def test_geotiff_without_crs_needs_input_crs(self):
         tif = make_geotiff(self.root / 'nocrs.tif', epsg=None)
@@ -214,7 +222,7 @@ class GeoTiffTests(GdalCase):
                        'NODATA_value -9999\n1 2 -9999\n4 5 6\n')
         array, gt, *_ = self.prepare_first('raster', [asc], input_crs='EPSG:6677')
         self.assertEqual(gt, (1000.0, 10.0, 0.0, 2020.0, 0.0, -10.0))
-        self.assertNoData(array, np.array([[0, 0, 1], [0, 0, 0]], bool))
+        self.assertOutputNoData(array, np.array([[0, 0, 1], [0, 0, 0]], bool))
 
     def test_failed_preparation_is_recorded_in_the_input_report(self):
         junk = self.root / 'junk.tif'
@@ -288,14 +296,14 @@ class TiffWorldFileTests(GdalCase):
         no_def = make_geotiff(self.root / 'nd.tif', values, nodata=None)
         # forest_nodata (default -9999) is the fallback for files without a definition ...
         array, *_ = self.prepare_first('forest', [no_def])
-        self.assertNoData(array, values == -9999)
+        self.assertOutputNoData(array, values == -9999)
         # ... and disabling it leaves nothing to interpret the file with.
         with self.assertRaisesRegex(ValueError, 'no NoData definition'):
             self.prepare('forest', [no_def], forest_nodata=None)
         # an embedded definition wins over forest_nodata
         own = make_geotiff(self.root / 'own.tif', np.array([[1, -1, 3, 4]] * 3, 'float32'), nodata=-1.0)
         array, *_ = self.prepare_first('forest', [own], forest_nodata=-9999.0)
-        self.assertNoData(array, np.array([[0, 1, 0, 0]] * 3, bool))
+        self.assertOutputNoData(array, np.array([[0, 1, 0, 0]] * 3, bool))
 
     def test_unreadable_forest_tiff(self):
         junk = self.root / 'junk.tif'
@@ -426,7 +434,8 @@ class ForestLemTests(GdalCase):
         lem, _ = standard_lem(self.root)
         array, gt, nodata, srs, report = self.prepare_first('forest', [lem], cell_size=5.0)
         self.assertEqual(gt, (0.0, 5.0, 0.0, 10.0, 0.0, -5.0))
-        np.testing.assert_allclose(array, [[10, 11, NODATA], [NODATA, 12, 13]])
+        np.testing.assert_allclose(array, [[10, 11, DEFAULT_OUTPUT_NODATA],
+                                           [DEFAULT_OUTPUT_NODATA, 12, 13]])
         self.assertEqual(report['detected'][0]['kind'], 'lem')
         self.assertEqual(int(report['detected'][0]['survey_year']), 2020)
 
@@ -496,7 +505,7 @@ class ForestXyzGridTests(GdalCase):
         body = 'X,Y,Z\n102.5,107.5,1\n107.5,107.5,-9999\n102.5,102.5,3\n107.5,102.5,4\n'
         array, *_ = self.prepare_first('forest', [self.grid('nd.csv', body)], cell_size=5.0,
                                        forest_axis_order='east_north')
-        self.assertNoData(array, np.array([[0, 1], [0, 0]], bool))
+        self.assertOutputNoData(array, np.array([[0, 1], [0, 0]], bool))
 
     def test_explicit_grid_cell_overrides_inference(self):
         _, report, _ = self.prepare('forest', [self.grid()], cell_size=5.0,
@@ -574,7 +583,7 @@ class GsiEndToEndTests(GdalCase):
         self.assertEqual(srs.GetAuthorityCode(None), '6668')
         self.assertAlmostEqual(gt[0], 139.0, places=6)
         self.assertAlmostEqual(gt[3], 35.1, places=6)
-        np.testing.assert_allclose(array, [[10.5, 11.5], [12.5, NODATA]])
+        np.testing.assert_allclose(array, [[10.5, 11.5], [12.5, DEFAULT_OUTPUT_NODATA]])
         self.assertEqual(report['sources'][0]['mesh'], '5139')
 
     def test_zip_members_are_read_in_memory(self):
