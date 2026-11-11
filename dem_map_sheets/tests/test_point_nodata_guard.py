@@ -30,7 +30,8 @@ if HAVE_GDAL:
     from osgeo import osr
     from dem_map_sheets.engine.input_sources import DEFAULTS, NoDataCollisionError
     from dem_map_sheets.engine.point_inputs import (
-        _f32_window, _guard_windows, build_pipeline, count_points_in_window, inspect_sources)
+        _f32_window, _guard_windows, build_pipeline, count_points_in_window, inspect_sources,
+        lidar_keep_expression)
 
 FAKE = r'''#!/bin/sh
 # --version | info --summary FILE | pipeline SPEC --metadata META --stream
@@ -235,6 +236,7 @@ class LasGuardTests(GuardCase):
         spec = json.loads(self.spec.read_text())
         kinds = [s['type'] for s in spec['pipeline']]
         self.assertEqual(kinds, ['readers.las', 'filters.expression', 'filters.stats'])
+        self.assertIn('(Withheld == 0 && Classification != 7 && Classification != 18', spec['pipeline'][1]['expression'])
         self.assertIn('Z >= -9999.00595', spec['pipeline'][1]['expression'])
         self.assertIn('Z <= -9998.99404', spec['pipeline'][1]['expression'])
         self.assertIn('--stream', self.scans()[0])
@@ -256,14 +258,33 @@ class LasGuardTests(GuardCase):
         self.assertEqual({d['role'] for d in ctx.exception.detail}, {'internal', 'output'})
         self.assertIn(-999999.0, [d['value'] for d in ctx.exception.detail])
 
+    def test_scan_counts_only_points_that_are_interpolated(self):
+        """Noise classes, withheld points and non-ground classes are never interpolated,
+        so they must not be able to stop the run (real LAS often parks noise at -9999)."""
+        self.infofile.write_text(json.dumps(info(-20000.0, 200.0)))
+        os.environ['FAKE_PDAL_SCAN_COUNT'] = '0'
+        self.inspect(lidar_mode='classified', ground_classes=[2, 11])
+        expression = json.loads(self.spec.read_text())['pipeline'][1]['expression']
+        for needle in ('Withheld == 0', 'Classification != 7', 'Classification != 18',
+                       'Classification == 2', 'Classification == 11'):
+            self.assertIn(needle, expression)
+
+    def test_scan_uses_the_same_selection_as_the_interpolation_pipeline(self):
+        for mode in ('classified', 'ground_only', 'auto'):
+            for declared in (None, -9999.0):
+                with self.subTest(mode=mode, declared=declared):
+                    c = self.cfg(lidar_mode=mode, source_nodata=declared)
+                    records = [dict(read_path='/d/in.las', reader='readers.las', crs='EPSG:6677')]
+                    pipeline, _h = build_pipeline(records, (0.0, 0.0, 64.0, 64.0), c, self.root / 'o.tif')
+                    used = [s for s in pipeline['pipeline'] if s['type'] == 'filters.expression'][0]['expression']
+                    self.assertEqual(used, lidar_keep_expression(c))
+
     def test_declared_nodata_is_excluded_inside_the_scan_expression(self):
         self.infofile.write_text(json.dumps(info(-1000000.0, 200.0)))
         self.inspect(source_nodata=-999999.0)
-        # the fake keeps only the last spec: re-run one guard at a time for a precise check
-        from dem_map_sheets.engine.point_inputs import _declared_window
-        declared = _declared_window({'source_nodata': -999999.0})
+        keep = lidar_keep_expression(self.cfg(source_nodata=-999999.0))
         count_points_in_window(self.exe, 'readers.las', str(self.las), (-999999.0005, -998999.0),
-                               declared, self.work, 'probe')
+                               keep, self.work, 'probe')
         expression = json.loads(self.spec.read_text())['pipeline'][1]['expression']
         self.assertIn('Z >= -999999.0005', expression)
         self.assertIn('(Z < ', expression)

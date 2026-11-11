@@ -63,7 +63,8 @@ class RealPdalNoDataCase(unittest.TestCase):
         self._n = 0
 
     # -- inputs --------------------------------------------------------------
-    def make_input(self, source, extra_z=None, name='pts', scale_z=0.001, offset_z=0.0, folder=None):
+    def make_input(self, source, extra_z=None, name='pts', scale_z=0.001, offset_z=0.0, folder=None,
+                   extra_class=2):
         """16 ground points on a 10 m grid (+ one point at (5,5) when extra_z is given)."""
         folder = Path(folder) if folder else self.root
         folder.mkdir(parents=True, exist_ok=True)
@@ -75,8 +76,8 @@ class RealPdalNoDataCase(unittest.TestCase):
             path.write_text('X,Y,Z\n' + ''.join(f'{x},{y},{z}\n' for x, y, z in rows), encoding='utf-8')
             return path
         csv = folder / f'{name}_src.csv'
-        csv.write_text('X,Y,Z,Classification\n' + ''.join(f'{x},{y},{z},2\n' for x, y, z in rows),
-                       encoding='utf-8')
+        csv.write_text('X,Y,Z,Classification\n' + ''.join(
+            f'{x},{y},{z},{extra_class if (x, y) == (5, 5) else 2}\n' for x, y, z in rows), encoding='utf-8')
         path = folder / f'{name}.{source}'
         make_las(csv, path, scale_z, offset_z)
         return path
@@ -199,6 +200,27 @@ class CleanRunTests(RealPdalNoDataCase):
                 with self.assertRaisesRegex(ValueError, 'non-finite'):
                     self.run_dem('text', path, method)
         # LAS/LAZ stores integers: NaN cannot occur there (nothing to test).
+
+
+class UninterpolatedPointTests(RealPdalNoDataCase):
+    """A point that is never interpolated must not stop the run: LAS data often
+    parks noise at an extreme elevation such as -9999."""
+
+    def test_noise_and_non_ground_points_at_guarded_values_do_not_stop_the_run(self):
+        for z in (-9999, -999999):
+            for klass in (7, 18, 1):  # low/high noise, unclassified-vegetation
+                for ext in ('las', 'laz'):
+                    with self.subTest(z=z, klass=klass, ext=ext):
+                        clean = self.make_input(ext, None, name=f'c_{ext}_{klass}{abs(z)}')
+                        noisy = self.make_input(ext, z, name=f'n_{ext}_{klass}{abs(z)}', extra_class=klass)
+                        _m, base, nd0, _o = self.run_dem('las', clean, 'idw')
+                        manifest, array, nd, _o = self.run_dem('las', noisy, 'idw')
+                        self.assertEqual(manifest['status'], 'completed')
+                        np.testing.assert_allclose(array, base, atol=1e-3)
+
+    def test_the_same_point_as_ground_does_stop_the_run(self):
+        path = self.make_input('las', -9999, name='ground', extra_class=2)
+        self.expect_stop('las', path, 'idw')
 
 
 class DeclaredNoDataTests(RealPdalNoDataCase):
