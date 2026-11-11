@@ -665,6 +665,9 @@ def prepare_inputs(c,work,gdal,osr,feedback=None):
         # thus run.json) instead of vanishing with the work dir.
         if notes:
             report.setdefault('nodata_scan',[]).extend(notes)
+            for entry in notes:
+                if entry['nodata_collision_cells']:
+                    report.setdefault('nodata_value_collisions',[]).append(entry)
             notes.clear()
     try:
         if c['input_type']=='lidar' or (c['input_type']=='text' and c['text_mode']=='points'):
@@ -821,6 +824,14 @@ def prepare_inputs(c,work,gdal,osr,feedback=None):
                                  f'first reasons: {first}')
             raise ValueError('使用可能なDEMが見つかりません（No usable DEMs found (XML may contain metadata only)）')
         fold_notes()
+        collisions=report.get('nodata_value_collisions') or []
+        if collisions and feedback is not None:
+            total=sum(e['nodata_collision_cells'] for e in collisions)
+            feedback.pushWarning(
+                f'入力DEMに、出力NoData値（{output_nodata_of(c)}）と一致する有効な標高セルが {total} 件あります。'
+                'これらのセルは出力ではNoDataとして読み取られるため、必要に応じて出力NoData値を変更してください。'
+                f' (Valid elevation cells equal to the output NoData value were found in the input; '
+                'they will read as NoData in the output. See nodata_value_collisions in run.json.)')
         report.update(status='completed',prepared_rasters=outputs);save()
         return {**c,'inputs':outputs,'source_nodata':None},report
     except BaseException as exc:

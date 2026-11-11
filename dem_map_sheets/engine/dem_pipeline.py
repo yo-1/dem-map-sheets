@@ -36,7 +36,7 @@ def gtiff_options():
     return ['TILED=YES','COMPRESS=DEFLATE','PREDICTOR=3','BIGTIFF=IF_SAFER']
 
 
-def materialize_geotiff(source,dest,gdal,output_nodata=DEFAULT_OUTPUT_NODATA):
+def materialize_geotiff(source,dest,gdal,output_nodata=DEFAULT_OUTPUT_NODATA,notes=None):
     # Write to a temporary sibling and rename, so a failure can never
     # leave a partial file at the final path (deliverable protection:
     # every output file is complete-or-absent).
@@ -68,6 +68,7 @@ def materialize_geotiff(source,dest,gdal,output_nodata=DEFAULT_OUTPUT_NODATA):
         # because Translate alone cannot remap values.
         upd=gdal.Open(str(tmp),gdal.GA_Update)
         if upd is None: raise RuntimeError('GeoTIFF creation failed: '+str(dest))
+        collisions=0
         for band_index in range(1,upd.RasterCount+1):
             band=upd.GetRasterBand(band_index)
             src_nodata=src_nodatas[band_index-1] if src_nodatas is not None else None
@@ -79,12 +80,19 @@ def materialize_geotiff(source,dest,gdal,output_nodata=DEFAULT_OUTPUT_NODATA):
                     missing=~finite|(block==src_nodata)
                 else:
                     missing=~finite
+                # Valid cells already equal to output_nodata cannot
+                # be told apart from missing ones once the band
+                # NoData is set; count them for the caller instead
+                # of silently reclassifying them.
+                collisions+=int((finite&~missing&(block==output_nodata)).sum())
                 if missing.any():
                     block=np.where(missing,output_nodata,block).astype('float32')
                     if band.WriteArray(block,0,y)!=0:
                         raise RuntimeError('GeoTIFF creation failed: '+str(dest))
             band.SetNoDataValue(output_nodata)
         upd.FlushCache();upd=None
+        if notes is not None and collisions:
+            notes.append({'source':str(source),'nodata_collision_cells':int(collisions)})
         os.replace(tmp,dest)
     except BaseException:
         try:tmp.unlink()
@@ -350,10 +358,11 @@ def _prepare_source_groups(c,work,source_dir,gdal,osr,feedback=None):
             dropped.append({'source':str(source),'dropped':True,
                             'ignored':[{'path':str(source),'reason':str(exc)}]})
             continue
-        rasters=[]
+        rasters=[];group_notes=[]
         for path in prepared['inputs']:
             counter+=1;dest=source_dir/f'dem_{counter:05d}.tif'
-            rasters.append(materialize_geotiff(path,dest,gdal,output_nodata_of(c)))
+            rasters.append(materialize_geotiff(path,dest,gdal,output_nodata_of(c),group_notes))
+        if group_notes:report.setdefault('nodata_value_collisions',[]).extend(group_notes)
         auto_year=_report_year(report)
         if meta['survey_year'] is None and auto_year is not None:meta['survey_year']=auto_year
         # When input is explicitly ground-only point data, raw point count / bounds area is a valid ground density.
@@ -528,6 +537,7 @@ def _run(config,output_dir,gdal,osr,feedback=None):
     out=Path(output_dir);out.mkdir(parents=True,exist_ok=False)
     work=out/'work';source_dir=out/'01_source_dem';source_dir.mkdir()
     c['inputs']=discover(c['inputs'],'',c,feedback)
+    mat_notes=[]
     try:
         mode=config.get('merge_priority','last')
         if mode=='auto':
@@ -538,12 +548,12 @@ def _run(config,output_dir,gdal,osr,feedback=None):
             report={'mode':'per_source','sources':[g['input_report'] for g in groups]+dropped}
         else:
             prepared,report=prepare_inputs(c,work,gdal,osr,feedback)
-            materialized=[]
+            materialized=[];mat_notes=[]
             for i,path in enumerate(prepared['inputs'],1):
                 if feedback is not None and feedback.isCanceled():raise RuntimeError('Cancelled（処理がキャンセルされました。途中まで生成された出力ファイルは不完全なため、使用しないでください）')
                 dest=source_dir/f'dem_{i:05d}.tif'
                 try:
-                    materialized.append(materialize_geotiff(path,dest,gdal,out_nd))
+                    materialized.append(materialize_geotiff(path,dest,gdal,out_nd,mat_notes))
                 except Exception as exc:
                     raise ValueError(_invalid_raster_reason(path,exc)) from exc
                 if feedback is not None:feedback.setProgress(min(55,5+50*i/max(1,len(prepared['inputs']))))
@@ -555,6 +565,19 @@ def _run(config,output_dir,gdal,osr,feedback=None):
         # DEM: warn loudly, but do not fail the run - the cause may
         # be a legitimate (if useless) parameter combination.
         output_warnings=[]
+        # Materialize-time NoData collisions (passthrough inputs are
+        # not scanned by normalize, so this is their surfacing path;
+        # normalized inputs classify output-valued cells as missing
+        # already and produce none here).
+        if mat_notes:
+            output_warnings.append('nodata_value_collision')
+            total=sum(e['nodata_collision_cells'] for e in mat_notes)
+            if feedback is not None and hasattr(feedback,'pushWarning'):
+                feedback.pushWarning(
+                    f'入力DEMに、出力NoData値（{out_nd}）と一致する有効な標高セルが {total} 件あります。'
+                    'これらのセルは出力ではNoDataとして読み取られるため、必要に応じて出力NoData値を変更してください。'
+                    ' (Valid elevation cells equal to the output NoData value were found in the input; '
+                    'they will read as NoData in the output. See nodata_value_collisions in run.json.)')
         if not _has_valid_cells(merged,gdal):
             message=('出力DEMの全セルがNoDataです。入力の標高値が1つも反映されていません。'
                 'セルサイズが入力範囲に対して大きすぎる、入力と出力の座標系・範囲のずれ、'
@@ -570,6 +593,7 @@ def _run(config,output_dir,gdal,osr,feedback=None):
             'source_dems':materialized,'merged_dem':merged,'target_crs':c['target_crs'],'cell_size':c['cell_size'],
             'vertical_reference':c['vertical_reference'],'vertical_conversion':False,'merge_priority':mode,
             'priority_selection':priority_report,'input_report':report,'output_nodata':out_nd,
+            'nodata_value_collisions':mat_notes,
             'source_datum_label':datum_labels[0] if len(datum_labels)==1 else (datum_labels or None),
             'proj_epsg_version':proj_epsg_version(osr),
             'work_retained':'all' if config.get('keep_work') else 'none'}
