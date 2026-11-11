@@ -64,6 +64,31 @@ jobs:
         shell: bash -el {0}
         run: PYTHONPATH=. python -m unittest validation.known_defects.test_known_defects.KnownDefects.test_kd5_tiny_raster_finer_than_output_cell_does_not_hang
 
+  gdal384:
+    # GDAL 3.8.4 from conda-forge (the version the apt-based `synthetic` job is meant
+    # to cover). The apt install step of that job hangs on GitHub runners at times,
+    # which left the 3.8.4 result unverified; this job needs no apt.
+    runs-on: ubuntu-24.04
+    steps:
+      - uses: actions/checkout@v7
+        with:
+          persist-credentials: false
+      - uses: mamba-org/setup-micromamba@v2
+        with:
+          environment-name: dem-gdal384
+          create-args: >-
+            python=3.12
+            gdal=3.8.4
+            numpy
+            pillow
+          init-shell: bash
+      - name: GDAL version
+        shell: bash -el {0}
+        run: python -c "from osgeo import gdal; print('GDAL', gdal.__version__)"
+      - name: Unit tests (GDAL 3.8.4, conda-forge)
+        shell: bash -el {0}
+        run: PYTHONPATH=. python -m unittest discover -s dem_map_sheets/tests -v
+
   real-pdal:
     # Real PDAL (conda-forge, environment-pointcloud.yml): the tests that
     # the mocked suites cannot vouch for (NoData point guard, interpolation
