@@ -72,7 +72,7 @@ class RealPdalTests(unittest.TestCase):
         self.assertIsNotNone(ds)
         arr = ds.GetRasterBand(1).ReadAsArray()
         ds = None
-        valid = arr[arr != -9999.0]  # point blocks carry the output NoData (default -9999)
+        valid = arr[arr != -999999.0]  # point blocks mark empty cells with the internal sentinel; conversion to the output NoData happens at materialization
         self.assertGreaterEqual(valid.size, 10)
         # corner cell centre (5, 35) interpolates the z=103/104 points
         self.assertTrue(102.0 < float(arr[0, 0]) < 105.5, arr[0, 0])
@@ -94,6 +94,41 @@ class RealPdalTests(unittest.TestCase):
                       inputs=[str(self.xyz)]),
             work, gdal, osr, None)
         self._check_block(outputs)
+
+    def test_point_at_output_nodata_stops_the_run_end_to_end(self):
+        # Issue #8 audit, PDAL path measured end to end: a point
+        # whose elevation equals the output NoData value (-9999)
+        # produces a data cell with that value under 'min'; because
+        # the writer marks empty cells with the internal sentinel,
+        # materialization detects the cell as a collision and the
+        # run stops. Without such a point the same run completes and
+        # the sentinel is converted to the output NoData.
+        from dem_map_sheets.engine.dem_pipeline import run
+        from dem_map_sheets.engine.input_sources import NoDataCollisionError
+        base = ['X,Y,Z']
+        for y in (0, 10, 20, 30):
+            for x in (0, 10, 20, 30):
+                base.append(f'{x},{y},{100 + x // 10 + y // 10}')
+        hit = self.root / 'points_hit.csv'
+        hit.write_text('\n'.join(base + ['5,5,-9999']) + '\n', encoding='utf-8')
+        cfg = self._cfg(input_type='text', text_mode='points',
+                        inputs=[str(hit)], point_method='min',
+                        point_tile_size=64)  # run() validates 64..2048
+        with self.assertRaises(NoDataCollisionError):
+            run(cfg, self.root / 'out_hit', gdal, osr, None)
+        clean = self.root / 'points_clean.csv'
+        clean.write_text('\n'.join(base) + '\n', encoding='utf-8')
+        cfg = self._cfg(input_type='text', text_mode='points',
+                        inputs=[str(clean)], point_method='min',
+                        point_tile_size=64)
+        manifest = run(cfg, self.root / 'out_clean', gdal, osr, None)
+        self.assertEqual(manifest['status'], 'completed')
+        ds = gdal.Open(manifest['merged_dem'])
+        band = ds.GetRasterBand(1)
+        arr = band.ReadAsArray()
+        self.assertEqual(band.GetNoDataValue(), -9999.0)
+        ds = None
+        self.assertFalse((arr == -999999.0).any())
 
 
     def test_cross_crs_reprojection_lands_where_gdal_expects(self):

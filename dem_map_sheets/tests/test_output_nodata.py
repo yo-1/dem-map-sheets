@@ -11,8 +11,12 @@ Spec under test:
   hide a valid lower-priority value at merge time;
 - passthrough materialization remaps cell values, not just the
   NoData metadata;
-- valid cells equal to the chosen output value are surfaced
-  (report + warning), not silently converted;
+- valid cells equal to the chosen output value stop the run with
+  NoDataCollisionError (Issue #8 independent audit, 2026-11-11:
+  warning-and-continue is not acceptable), on every path - normal
+  raster, passthrough, auto priority, and PDAL point inputs, whose
+  writer marks empty cells with the internal sentinel so an
+  output-valued data cell survives to be detected;
 - the TerrainRGB tile encoding keeps its spec-fixed -9999 for
   missing pixels regardless of output_nodata.
 
@@ -36,8 +40,8 @@ if HAVE_GDAL:
     from osgeo import gdal, osr
     from dem_map_sheets.engine.dem_pipeline import materialize_geotiff, run
     from dem_map_sheets.engine.input_sources import (
-        DEFAULTS, normalize, validate_input)
-    from dem_map_sheets.engine.point_inputs import build_pipeline
+        DEFAULTS, NoDataCollisionError, normalize, validate_input)
+    from dem_map_sheets.engine.point_inputs import build_pipeline, inspect_sources
     from dem_map_sheets.engine.terrainrgb import decode_elevation, encode_elevation
 
 
@@ -236,39 +240,120 @@ class PassthroughTests(OutputNoDataCase):
 
 
 class CollisionGuardTests(OutputNoDataCase):
-    def test_collision_surfaced_in_report_and_warning(self):
+    def test_collision_stops_the_run(self):
         values = np.array([[100, -9999, 102, 103],
                            [104, 105, -999999, 107],
                            [108, 109, 110, 111]], dtype='float32')
         tif = make_geotiff(self.root / 'a.tif', values, nodata=-999999.0)
-        manifest, _, feedback = self.run_dem([tif])
-        collisions = manifest['input_report']['nodata_value_collisions']
-        self.assertEqual(len(collisions), 1)
-        self.assertEqual(collisions[0]['nodata_collision_cells'], 1)
-        self.assertTrue(any('出力NoData値' in w for w in feedback.warnings))
-        array, nodata, _ = self.read(manifest['merged_dem'])
-        self.assertEqual(array[1, 2], -9999.0)  # the declared hole, as output NoData
+        out = self.root / 'collision_out'
+        with self.assertRaises(NoDataCollisionError) as ctx:
+            run(self.config([tif]), out, gdal, osr, _Feedback())
+        message = str(ctx.exception)
+        # The error names the input, the colliding value and the
+        # detected count, and tells the user the remedy.
+        self.assertIn('a.tif', message)
+        self.assertIn('-9999.0', message)
+        self.assertIn('1 件', message)
+        self.assertIn('別の出力NoData値', message)
+        # No successful product: the failure is recorded instead.
+        import json
+        record = json.loads((out / 'run.json').read_text(encoding='utf-8'))
+        self.assertEqual(record['status'], 'failed')
+        self.assertFalse((out / '02_merged_dem.tif').exists())
 
-    def test_materialize_counts_collisions_without_converting(self):
+    def test_collision_with_custom_output_value_stops(self):
+        values = np.array([[100, -7777, 102, 103]] * 3, dtype='float32')
+        tif = make_geotiff(self.root / 'a.tif', values, nodata=-999999.0)
+        with self.assertRaises(NoDataCollisionError) as ctx:
+            run(self.config([tif], output_nodata=-7777.0),
+                self.root / 'custom_out', gdal, osr, _Feedback())
+        self.assertIn('-7777.0', str(ctx.exception))
+
+    def test_declared_nodata_equal_to_output_is_not_a_collision(self):
+        # The input's own declared NoData happens to be the output
+        # value: those cells are missing by the input's definition,
+        # not valid data, so the run must succeed (no false positive).
+        values = np.array([[100, -9999, 102, 103]] * 3, dtype='float32')
+        tif = make_geotiff(self.root / 'a.tif', values)  # band NoData -9999
+        manifest, _, _ = self.run_dem([tif])
+        array, nodata, _ = self.read(manifest['merged_dem'])
+        self.assertEqual(nodata, -9999.0)
+        self.assertTrue(np.all(array[:, 1] == -9999.0))
+        self.assertEqual(array[0, 0], 100.0)
+
+    def test_passthrough_collision_stops(self):
+        values = np.array([[100, -9999, 102, 103]] * 3, dtype='float32')
+        tif = make_geotiff(self.root / 'a.tif', values, nodata=-999999.0)
+        with self.assertRaises(NoDataCollisionError):
+            run(self.config([tif], normalize_rasters=False, input_crs=''),
+                self.root / 'pass_out', gdal, osr, _Feedback())
+
+    def test_auto_priority_collision_stops(self):
+        values = np.array([[100, -9999, 102, 103]] * 3, dtype='float32')
+        tif = make_geotiff(self.root / 'a.tif', values, nodata=-999999.0)
+        with self.assertRaises(NoDataCollisionError):
+            run(self.config([tif], merge_priority='auto'),
+                self.root / 'auto_out', gdal, osr, _Feedback())
+
+    def test_materialize_collision_raises_and_writes_nothing(self):
         values = np.array([[10, -9999], [20, 30]], dtype='float32')
         src = make_geotiff(self.root / 'a.tif', values, nodata=None)
         notes = []
-        materialize_geotiff(src, self.root / 'm.tif', gdal, -9999.0, notes)
-        self.assertEqual(len(notes), 1)
+        dest = self.root / 'm.tif'
+        with self.assertRaises(NoDataCollisionError) as ctx:
+            materialize_geotiff(src, dest, gdal, -9999.0, notes)
+        self.assertIn('1 件', str(ctx.exception))
+        self.assertFalse(dest.exists())  # the temp file is removed
+        self.assertEqual(len(notes), 1)  # the count is still recorded
         self.assertEqual(notes[0]['nodata_collision_cells'], 1)
-        array, nodata, _ = self.read(self.root / 'm.tif')
-        self.assertEqual(array[0, 1], -9999.0)  # value untouched; only flagged
 
 
 class PdalPathTests(OutputNoDataCase):
-    def test_writer_nodata_follows_output_nodata(self):
+    def test_writer_marks_empty_cells_with_internal_sentinel(self):
+        # The PDAL writer must NOT use the output NoData value for
+        # empty cells: a data cell equal to the output value would be
+        # indistinguishable from an empty one. With the internal
+        # sentinel (-999999) marking empties, an output-valued data
+        # cell survives in the block and materialize_geotiff detects
+        # it as a collision, like any raster input.
         c = {**DEFAULTS, 'input_type': 'lidar', 'cell_size': 1.0,
              'target_crs': 'EPSG:6677', 'output_nodata': -7777.0}
         records = [dict(read_path='/data/in.las', reader='readers.las', crs='EPSG:6677')]
         pipeline, _halo = build_pipeline(records, (100.0, 200.0, 164.0, 264.0),
                                          c, self.root / 'o.tif')
         writer = [s for s in pipeline['pipeline'] if s['type'] == 'writers.gdal'][0]
-        self.assertEqual(writer['nodata'], -7777.0)
+        self.assertEqual(writer['nodata'], -999999.0)
+
+
+class TextPointSentinelTests(OutputNoDataCase):
+    def _text_config(self, path, **kw):
+        c = {**DEFAULTS, 'input_type': 'text', 'text_mode': 'points',
+             'inputs': [str(path)], 'input_crs': 'EPSG:6677',
+             'target_crs': 'EPSG:6677', 'source_nodata': None}
+        c.update(kw)
+        return c
+
+    def _write_points(self, rows):
+        path = self.root / 'points.csv'
+        path.write_text('X,Y,Z\n' + ''.join(f'{x},{y},{z}\n' for x, y, z in rows),
+                        encoding='utf-8')
+        return path
+
+    def test_point_at_internal_sentinel_stops_with_guidance(self):
+        path = self._write_points([(1000, 2000, 50.0), (1010, 2000, -999999.0)])
+        work = self.root / 'work'
+        work.mkdir()
+        with self.assertRaisesRegex(ValueError, 'source_nodata'):
+            inspect_sources(self._text_config(path), work, 'pdal', osr, _Feedback())
+
+    def test_sentinel_point_declared_as_source_nodata_is_skipped(self):
+        path = self._write_points([(1000, 2000, 50.0), (1010, 2000, -999999.0)])
+        work = self.root / 'work'
+        work.mkdir()
+        records, _staged = inspect_sources(
+            self._text_config(path, source_nodata=-999999.0),
+            work, 'pdal', osr, _Feedback())
+        self.assertEqual(records[0]['count'], 1)
 
 
 class GridSizeTests(OutputNoDataCase):
