@@ -106,18 +106,24 @@ def _ascii_temp_area():
 
 
 def _f32_window(value):
-    """Closed interval of doubles that round to float32(value).
+    """(float32 value, lo, hi): every double GDAL will read back as that NoData value.
 
-    Output rasters are Float32, so two elevations that round to the same
-    float32 are the same value for NoData purposes. Comparing the window
-    instead of the exact double keeps the test independent of LAS
-    scale/offset rounding (a stored -9999 can read back as -9999.0000000002).
+    Output rasters are Float32 and GDAL's NoData comparison is not exact: it
+    treats a cell within about 4*FLT_EPSILON*|value| of the NoData value as
+    NoData (measured on GDAL 3.8.4 with BuildVRT srcNodata / mask bands:
+    -9999 +-4 float32 steps, -32768 +-7, -999999 +-7).  A point inside that
+    window would therefore come back missing downstream even though it is
+    not exactly equal.  The window uses 5*FLT_EPSILON*|value| (a margin over
+    GDAL's rule) and never less than the float32 rounding step, which also
+    keeps the test independent of LAS scale/offset rounding (a stored -9999
+    can read back as -9999.0000000002).
     """
     import numpy as np
     v=np.float32(value)
-    lo=(float(np.nextafter(v,np.float32(-np.inf)))+float(v))/2
-    hi=(float(np.nextafter(v,np.float32(np.inf)))+float(v))/2
-    return float(v),lo,hi
+    eps=float(np.finfo(np.float32).eps)
+    half_step=(float(np.nextafter(v,np.float32(np.inf)))-float(v))/2
+    tol=max(5*eps*abs(float(v)),half_step)
+    return float(v),float(v)-tol,float(v)+tol
 
 
 def _guard_windows(c):

@@ -104,13 +104,27 @@ class GuardCase(unittest.TestCase):
 
 
 class WindowTests(GuardCase):
-    def test_window_covers_every_double_that_rounds_to_the_float32(self):
+    def test_window_covers_what_gdal_reads_back_as_nodata(self):
+        # measured on GDAL 3.8.4: -9999 +-4 float32 steps (0.000977 each) is NoData
         v, lo, hi = _f32_window(-9999.0)
         self.assertEqual(v, -9999.0)
-        for inside in (-9999.0, -9999.0004, -9998.9996, -9999.0 + 1e-12, -9999.0 - 1e-12):
+        for inside in (-9999.0, -9999.0004, -9998.9996, -9999.0 + 1e-12, -9999.002, -9999.0039, -9998.9961):
             self.assertTrue(lo <= inside <= hi, inside)
-        for outside in (-9999.002, -9998.998, -9998.0, -10000.0):
+        for outside in (-9999.01, -9998.99, -9998.0, -10000.0):
             self.assertFalse(lo <= outside <= hi, outside)
+
+    def test_window_scales_with_the_magnitude_of_the_nodata_value(self):
+        for value, step_count in ((-32768.0, 7), (-999999.0, 7), (-1.0, 4)):
+            v, lo, hi = _f32_window(value)
+            import numpy as np
+            step = float(np.nextafter(np.float32(v), np.float32(np.inf)) - np.float32(v))
+            self.assertGreaterEqual(v - lo, step_count * step * 0.999)
+            self.assertGreaterEqual(hi - v, step_count * step * 0.999)
+
+    def test_zero_nodata_has_no_tolerance_beyond_float32_rounding(self):
+        _v, lo, hi = _f32_window(0.0)
+        self.assertFalse(lo <= 1e-6 <= hi)
+        self.assertTrue(lo <= 0.0 <= hi)
 
     def test_guards_default_output_and_sentinel(self):
         guards = _guard_windows({'output_nodata': -9999.0})
@@ -168,11 +182,11 @@ class TextGuardTests(GuardCase):
         self.assertEqual(records[0]['count'], 2)
 
     def test_float32_equality_not_exact_double(self):
-        for z in ('-9999.0000000001', '-9999.0004', '-9998.9996', '-9999'):
+        for z in ('-9999.0000000001', '-9999.0004', '-9998.9996', '-9999', '-9999.002', '-9998.998'):
             with self.subTest(z=z):
                 with self.assertRaises(NoDataCollisionError):
                     self.text([50.0, z])
-        records = self.text([50.0, '-9999.002', '-9998.99'])  # distinct float32 values
+        records = self.text([50.0, '-9999.02', '-9998.98'])  # beyond GDAL's NoData tolerance
         self.assertEqual(records[0]['count'], 3)
 
     def test_declared_source_nodata_drops_the_points_instead_of_stopping(self):
@@ -221,8 +235,8 @@ class LasGuardTests(GuardCase):
         spec = json.loads(self.spec.read_text())
         kinds = [s['type'] for s in spec['pipeline']]
         self.assertEqual(kinds, ['readers.las', 'filters.expression', 'filters.stats'])
-        self.assertIn('Z >= -9999.000488', spec['pipeline'][1]['expression'])
-        self.assertIn('Z <= -9998.999511', spec['pipeline'][1]['expression'])
+        self.assertIn('Z >= -9999.00595', spec['pipeline'][1]['expression'])
+        self.assertIn('Z <= -9998.99404', spec['pipeline'][1]['expression'])
         self.assertIn('--stream', self.scans()[0])
 
     def test_hits_stop_the_run_with_the_exact_count(self):
@@ -302,8 +316,8 @@ class InterpolationPipelineTests(GuardCase):
 
     def test_declared_nodata_points_are_removed_before_interpolation(self):
         expression = self.expression(source_nodata=-999999.0)
-        self.assertIn('(Z < -999999.03', expression)   # half a float32 step (0.03125) below
-        self.assertIn('|| Z > -999998.96', expression)  # ... and above
+        self.assertIn('(Z < -999999.59', expression)   # 5*FLT_EPSILON*|v| (0.596) below
+        self.assertIn('|| Z > -999998.40', expression)  # ... and above
 
     def test_no_z_filter_without_a_declaration(self):
         self.assertNotIn('Z <', self.expression())

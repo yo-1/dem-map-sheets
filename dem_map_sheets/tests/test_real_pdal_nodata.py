@@ -271,11 +271,21 @@ class LasRoundingTests(RealPdalNoDataCase):
                     _e, record = self.expect_stop('las', path, method)
                     self.assertEqual(record['failure_detail'][0]['value'], -9999.0)
 
-    def test_a_distinct_float32_value_next_to_nodata_is_not_a_collision(self):
-        path = self.make_input('las', -9999.002, name='near')
+    def test_value_inside_gdals_nodata_tolerance_is_a_collision(self):
+        # GDAL re-reads anything within ~4*FLT_EPSILON*|v| of the NoData value as NoData
+        # (-9999 +-0.0039): -9999.002 is a different float32 value but would vanish
+        # downstream (found by the first real-PDAL run: neighbouring cells disappeared).
+        path = self.make_input('las', -9999.002, name='tol')
+        for method in METHODS:
+            with self.subTest(method=method):
+                _e, record = self.expect_stop('las', path, method)
+                self.assertEqual(record['failure_detail'][0]['value'], -9999.0)
+
+    def test_value_beyond_the_tolerance_is_an_ordinary_elevation(self):
+        path = self.make_input('las', -9999.02, name='beyond')
         manifest, array, nodata, _o = self.run_dem('las', path, 'min')
         self.assertEqual(manifest['status'], 'completed')
-        self.assertAlmostEqual(float(self.valid(array, nodata).min()), -9999.002, delta=0.002)
+        self.assertAlmostEqual(float(self.valid(array, nodata).min()), -9999.02, delta=0.002)
 
     def test_declared_nodata_matches_through_rounding_too(self):
         path = self.make_input('las', -9999, name='declr', scale_z=0.001, offset_z=0.0037)
