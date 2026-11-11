@@ -374,30 +374,109 @@ def has_world_file(path):
     return any(p.is_file() and p.name.lower() in expected for p in path.parent.iterdir())
 
 
-def normalize(path, dest, c, gdal, osr, feedback=None, override_nodata=True):
+def _scan_source_band(band, declared_nodata, output_nodata):
+    """One blockwise pass over a source band before warping.
+
+    Returns (nonfinite, collisions). Non-finite cells (NaN and
+    +/-inf) are not elevations; the caller materializes them as
+    missing. Collisions are finite cells equal to output_nodata
+    that are NOT missing under the rule the warp will honour
+    (declared_nodata when finite, else non-finiteness alone): valid
+    data the output would silently re-read as NoData. They are
+    counted so the caller can surface them, never converted here.
+    """
+    nonfinite=0;collisions=0
+    declared_finite=declared_nodata is not None and math.isfinite(declared_nodata)
+    for y in range(0,band.YSize,512):
+        block=band.ReadAsArray(0,y,band.XSize,min(512,band.YSize-y))
+        if block is None:raise RuntimeError('Raster read failed during NoData scan')
+        finite=np.isfinite(block)
+        nonfinite+=int((~finite).sum())
+        valid=finite&(block!=declared_nodata) if declared_finite else finite
+        collisions+=int((valid&(block==output_nodata)).sum())
+    return nonfinite,collisions
+
+
+def _write_cleaned_source(src, band, dest, fill, gdal):
+    """Copy a single-band source with every non-finite cell replaced
+    by fill and the band NoData set to fill. Used only when a source
+    actually carries NaN/inf cells: how the GDAL warper treats NaN
+    as a missing value alongside a declared srcNodata is not
+    portable across GDAL versions (audit P5/P6), so the conversion
+    happens here, explicitly, instead of relying on warper quirks.
+    The copy lives next to the warp destination inside the run's
+    work directory and shares its lifetime.
+    """
+    driver=gdal.GetDriverByName('GTiff')
+    out=driver.Create(str(dest),src.RasterXSize,src.RasterYSize,1,gdal.GDT_Float32,
+        options=['TILED=YES','COMPRESS=DEFLATE','PREDICTOR=3','BIGTIFF=IF_SAFER'])
+    if out is None:raise RuntimeError('Cannot create '+str(dest))
+    out.SetGeoTransform(src.GetGeoTransform())
+    projection=src.GetProjection()
+    if projection:out.SetProjection(projection)
+    oband=out.GetRasterBand(1)
+    oband.SetNoDataValue(float(fill))
+    for y in range(0,band.YSize,512):
+        block=band.ReadAsArray(0,y,band.XSize,min(512,band.YSize-y))
+        if block is None:raise RuntimeError('Raster read failed: '+str(dest))
+        block=np.where(np.isfinite(block),block,fill).astype('float32')
+        if oband.WriteArray(block,0,y)!=0:raise RuntimeError('Raster write failed')
+    out.FlushCache();out=None
+
+
+def normalize(path, dest, c, gdal, osr, feedback=None, override_nodata=True, notes=None):
     """Create a disk-backed warped VRT on the common target grid.
 
     A VRT keeps province-scale inputs virtual.  The pipeline later reads only
     the map sheet being rendered, so total source pixel count is not a RAM
     limit and no full-size normalized copy is materialized here.
+
+    Missing cells in the result always carry the config's
+    output_nodata. Which finite cells are missing is decided by the
+    source's own declared definition - the band NoData, or
+    source_nodata when the caller overrides - never by guessing
+    -9999/-999999. Non-finite cells (NaN/inf) are missing by
+    construction: they are materialized to the declared value (or
+    to output_nodata when the source declares nothing) before
+    warping, so they can neither leak through as numbers nor hide
+    valid lower-priority data at merge time. A raster with no
+    definition and no non-finite cells still stops with an error:
+    there is nothing to interpret its values with.
     """
     cancelled(feedback)
     src=gdal.Open(str(path))
     if src is None or src.RasterCount!=1:raise ValueError('Expected single-band elevation raster: '+str(path))
     band=src.GetRasterBand(1)
-    if override_nodata and c['source_nodata'] is None and band.GetNoDataValue() is None:
-        raise ValueError('Source raster has no NoData definition; specify source_nodata: '+str(path)+'（入力ラスタにNoDataが定義されていません。source_nodata（元データの無効値）を指定してください）')
     if band.GetScale() not in (None,1) or band.GetOffset() not in (None,0):
         raise ValueError('Apply raster scale/offset to elevation values before import: '+str(path))
+    out_nd=output_nodata_of(c)
+    band_nodata=band.GetNoDataValue()
+    if override_nodata and c['source_nodata'] is not None:
+        declared=c['source_nodata']
+    else:
+        declared=band_nodata
+    nonfinite,collisions=_scan_source_band(band,declared,out_nd)
+    if override_nodata and c['source_nodata'] is None and band_nodata is None and not nonfinite:
+        raise ValueError('Source raster has no NoData definition; specify source_nodata: '+str(path)+'（入力ラスタにNoDataが定義されていません。source_nodata（元データの無効値）を指定してください）')
     source=crs_of(c['input_crs'] or src.GetProjection(),osr)
     kwargs=dict(format='VRT',srcSRS=source.ExportToWkt(),dstSRS=c['target_crs'],
         xRes=c['cell_size'],yRes=c['cell_size'],targetAlignedPixels=True,
-        outputType=gdal.GDT_Float32,resampleAlg='bilinear',dstNodata=output_nodata_of(c),errorThreshold=0)
+        outputType=gdal.GDT_Float32,resampleAlg='bilinear',dstNodata=out_nd,errorThreshold=0)
     if override_nodata and c['source_nodata'] is not None:kwargs['srcNodata']=c['source_nodata']
+    warp_source=src
+    if nonfinite:
+        fill=declared if (declared is not None and math.isfinite(declared)) else out_nd
+        clean_dest=Path(str(dest)).with_name(Path(str(dest)).stem+'_src.tif')
+        _write_cleaned_source(src,band,clean_dest,fill,gdal)
+        warp_source=gdal.Open(str(clean_dest))
+        if warp_source is None:raise RuntimeError('Input reprojection failed: '+str(path))
     dest=Path(dest).with_suffix('.vrt')
-    vrt=gdal.Warp(str(dest),src,**kwargs)
+    vrt=gdal.Warp(str(dest),warp_source,**kwargs)
     if vrt is None:raise RuntimeError('Input reprojection failed: '+str(path))
     vrt.FlushCache();vrt=src=None
+    if notes is not None and (nonfinite or collisions):
+        notes.append({'source':str(path),'nonfinite_cells':int(nonfinite),
+                      'nodata_collision_cells':int(collisions)})
     cancelled(feedback)
     return str(dest)
 
@@ -476,7 +555,7 @@ def infer_grid_cell(path,c,feedback=None):
 
 
 
-def normalize_gsi_groups(paths,work,c,gdal,osr,feedback=None):
+def normalize_gsi_groups(paths,work,c,gdal,osr,feedback=None,notes=None):
     groups=[];base=None
     for path in paths:
         ds=gdal.Open(path);srs=ds.GetSpatialRef();gt=ds.GetGeoTransform()
@@ -498,7 +577,7 @@ def normalize_gsi_groups(paths,work,c,gdal,osr,feedback=None):
         if mosaic is None:raise RuntimeError('GSI mosaic failed')
         mosaic.FlushCache();mosaic=None
         results.append(normalize(mosaicpath,work/f'aligned_group_{i:06d}.tif',
-            {**c,'input_crs':'','max_input_pixels':c['max_pixels']},gdal,osr,feedback,False))
+            {**c,'input_crs':'','max_input_pixels':c['max_pixels']},gdal,osr,feedback,False,notes))
     return results
 
 
@@ -578,6 +657,15 @@ def prepare_inputs(c,work,gdal,osr,feedback=None):
     reportpath=work/'input_report.json'
     def save():reportpath.write_text(json.dumps(report,ensure_ascii=False,indent=2),encoding='utf-8')
     save();outputs=[];ordinal=0
+    notes=[]
+    def fold_notes():
+        # Per-source NoData scan results from normalize(): non-finite
+        # cells materialized as missing, and valid cells colliding
+        # with the output NoData value. Folded into the report (and
+        # thus run.json) instead of vanishing with the work dir.
+        if notes:
+            report.setdefault('nodata_scan',[]).extend(notes)
+            notes.clear()
     try:
         if c['input_type']=='lidar' or (c['input_type']=='text' and c['text_mode']=='points'):
             try:from .point_inputs import points_to_rasters
@@ -639,7 +727,7 @@ def prepare_inputs(c,work,gdal,osr,feedback=None):
                     raw=path;source={**c,'source_nodata':band_nodata if band_nodata is not None else c['forest_nodata']}
                     report['detected'].append({'path':str(path),'kind':'geotiff' if embedded else 'tiff_worldfile'})
                 aligned=work/f'aligned_{ordinal:06d}.tif'
-                outputs.append(normalize(raw,aligned,source,gdal,osr,feedback,kind=='raster'))
+                outputs.append(normalize(raw,aligned,source,gdal,osr,feedback,kind=='raster',notes=notes))
                 report['sources'].append({'path':str(path),'kind':kind});save()
             if len(report['ignored'])>20 and feedback is not None:
                 feedback.pushWarning(f"入力を無視: ほか {len(report['ignored'])-20} 件（詳細は input_report.json を参照）")
@@ -687,7 +775,7 @@ def prepare_inputs(c,work,gdal,osr,feedback=None):
                     else:report['sources'].append({'path':path})
                     if c['input_type']=='raster':
                         try:
-                            aligned=normalize(raw,work/f'aligned_{ordinal:06d}.tif',c,gdal,osr,feedback,True)
+                            aligned=normalize(raw,work/f'aligned_{ordinal:06d}.tif',c,gdal,osr,feedback,True,notes)
                         except (ValueError, RuntimeError) as exc:
                             reason=(f'入力ラスターを読み込めません: {path}。ファイルが破損していないか、TIFF等の対応形式か、'
                                     f'単一バンドの標高データかを確認してください。GDAL詳細: {exc}')
@@ -701,7 +789,7 @@ def prepare_inputs(c,work,gdal,osr,feedback=None):
                             continue
                         outputs.append(aligned)
                     else:
-                        outputs.append(normalize(raw,work/f'aligned_{ordinal:06d}.tif',c,gdal,osr,feedback,False))
+                        outputs.append(normalize(raw,work/f'aligned_{ordinal:06d}.tif',c,gdal,osr,feedback,False,notes))
                 save()
             if c['input_type']=='raster' and len(report['ignored'])>20 and feedback is not None:
                 feedback.pushWarning(f"入力を無視: ほか {len(report['ignored'])-20} 件（詳細は input_report.json を参照）")
@@ -709,7 +797,7 @@ def prepare_inputs(c,work,gdal,osr,feedback=None):
             if any('jgd2024' in d for d in gsi_datums) and any('jgd2011' in d or 'jgd2000' in d for d in gsi_datums):
                 raise ValueError('GSI old/new datum labels are mixed. Unify elevation realizations before merging.')
             if c['input_type']=='gsi' and outputs:
-                outputs=normalize_gsi_groups(outputs,work,c,gdal,osr,feedback)
+                outputs=normalize_gsi_groups(outputs,work,c,gdal,osr,feedback,notes)
         if any(isinstance(s,dict) and str(s.get('original_srs','')).lower() in
                ('fguuid:jgd2011.bl','fguuid:jgd2024.bl') for s in report['sources']):
             # r6: newer EPSG datasets label this horizontal CRS
@@ -732,7 +820,9 @@ def prepare_inputs(c,work,gdal,osr,feedback=None):
                 raise NoUsableInputError(f'使用可能なDEMが見つかりません（No usable DEMs found）: {len(ignored)} input(s) ignored; '
                                  f'first reasons: {first}')
             raise ValueError('使用可能なDEMが見つかりません（No usable DEMs found (XML may contain metadata only)）')
+        fold_notes()
         report.update(status='completed',prepared_rasters=outputs);save()
         return {**c,'inputs':outputs,'source_nodata':None},report
     except BaseException as exc:
+        fold_notes()
         report.update(status='cancelled' if feedback is not None and feedback.isCanceled() else 'failed',error=str(exc));save();raise
