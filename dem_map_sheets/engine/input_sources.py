@@ -194,6 +194,31 @@ def _scan_directory(directory, recursive, extensions, feedback=None):
     return sorted(found, key=lambda p: str(p).lower())
 
 
+def check_output_nodata(value):
+    """Validate an output NoData value and return it as a float.
+
+    Every deliverable is Float32, so a value Float32 cannot hold
+    exactly would silently differ from the value recorded in
+    run.json and from the value a user specified; reject it here
+    instead of letting it drift downstream.
+    """
+    if isinstance(value,bool) or not isinstance(value,(int,float)) or not math.isfinite(value):
+        raise ValueError('output_nodata must be a finite number（出力NoData値は有限の数で指定してください）')
+    if float(np.float32(value)) != float(value):
+        raise ValueError('output_nodata must be exactly representable in Float32（出力NoData値はFloat32で正確に表せる値で指定してください）')
+    return float(value)
+
+
+def output_nodata_of(c):
+    """Effective output NoData for a pipeline config: the configured
+    value when present (validate_input checks it), else the default.
+    Direct engine callers that build configs without the
+    pipeline-level key get the same default run() applies."""
+    if 'output_nodata' in c and c['output_nodata'] is not None:
+        return check_output_nodata(c['output_nodata'])
+    return DEFAULT_OUTPUT_NODATA
+
+
 def validate_input(c):
     if c['input_type'] not in EXTENSIONS:
         raise ValueError('input_type: raster, gsi, text, lidar or forest')
@@ -205,6 +230,8 @@ def validate_input(c):
             or not isinstance(c['cell_size'],(int,float))
             or not math.isfinite(c['cell_size']) or c['cell_size']<=0):
         raise ValueError('cell_size must be finite and positive（セルサイズは有限の正数を指定してください）')
+    if 'output_nodata' in c:
+        check_output_nodata(c['output_nodata'])
     if 'target_crs' in c and (not isinstance(c['target_crs'],str)
             or not c['target_crs'].strip()):
         raise ValueError('target_crs is required（対象CRSを指定してください）')
@@ -365,7 +392,7 @@ def normalize(path, dest, c, gdal, osr, feedback=None, override_nodata=True):
     source=crs_of(c['input_crs'] or src.GetProjection(),osr)
     kwargs=dict(format='VRT',srcSRS=source.ExportToWkt(),dstSRS=c['target_crs'],
         xRes=c['cell_size'],yRes=c['cell_size'],targetAlignedPixels=True,
-        outputType=gdal.GDT_Float32,resampleAlg='bilinear',dstNodata=NODATA,errorThreshold=0)
+        outputType=gdal.GDT_Float32,resampleAlg='bilinear',dstNodata=output_nodata_of(c),errorThreshold=0)
     if override_nodata and c['source_nodata'] is not None:kwargs['srcNodata']=c['source_nodata']
     dest=Path(dest).with_suffix('.vrt')
     vrt=gdal.Warp(str(dest),src,**kwargs)

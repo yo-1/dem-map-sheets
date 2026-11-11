@@ -8,9 +8,9 @@ import shutil
 import subprocess  # nosec B404: PDAL CLI requires an external process
 import time
 try:
-    from .input_sources import cancelled, say, crs_of, text_rows, NODATA
+    from .input_sources import cancelled, say, crs_of, text_rows, DEFAULT_OUTPUT_NODATA
 except ImportError:
-    from input_sources import cancelled, say, crs_of, text_rows, NODATA
+    from input_sources import cancelled, say, crs_of, text_rows, DEFAULT_OUTPUT_NODATA
 
 
 def executable(c):
@@ -175,6 +175,7 @@ def inspect_sources(c,work,exe,osr,feedback,staged_out=None,pdal_root=None):
 def build_pipeline(records,bounds,c,destination,classified_path=None):
     """Explicit tags keep independent reader branches from inheriting each other."""
     cell=c['cell_size'];auto=c['input_type']=='lidar' and c['lidar_mode']=='auto'
+    out_nd=float(c.get('output_nodata',DEFAULT_OUTPUT_NODATA))
     halo=math.ceil((c['point_radius']+(2*c['smrf_window'] if auto else 0))/cell)+2
     west,south,east,north=bounds
     extended=(west-halo*cell,south-halo*cell,east+halo*cell,north+halo*cell)
@@ -209,7 +210,7 @@ def build_pipeline(records,bounds,c,destination,classified_path=None):
     pipeline.append(dict(type='writers.gdal',filename=str(destination),inputs=tags,
         resolution=cell,origin_x=extended[0],origin_y=extended[1],
         width=round((east-west)/cell)+2*halo,height=round((north-south)/cell)+2*halo,
-        radius=c['point_radius'],output_type=c['point_method'],window_size=0,nodata=NODATA,
+        radius=c['point_radius'],output_type=c['point_method'],window_size=0,nodata=out_nd,
         data_type='float',gdaldriver='GTiff',gdalopts='TILED=YES,COMPRESS=DEFLATE,BIGTIFF=IF_SAFER',
         override_srs=c['target_crs'],allow_empty=True))
     return {'pipeline':pipeline},halo
@@ -221,6 +222,7 @@ def _points_to_rasters(c,work,gdal,osr,feedback,exe,staged,pdal_root):
     match=re.search(r'\b(\d+)\.(\d+)\.(\d+)\b',version)
     if not match or tuple(map(int,match.groups()))<(2,9,0):
         raise ValueError('PDAL >=2.9 is required for point processing')
+    out_nd=float(c.get('output_nodata',DEFAULT_OUTPUT_NODATA))
     # c['inputs'] is the validated QGIS selection.  Do not consult a config
     # file, remembered path or test default at any point in point processing.
     records,_returned_staged=inspect_sources(c,work,exe,osr,feedback,staged,pdal_root=pdal_root)
@@ -288,7 +290,7 @@ def _points_to_rasters(c,work,gdal,osr,feedback,exe,staged,pdal_root):
         a=ds.GetRasterBand(1).ReadAsArray(halo,halo,size,size)
         import numpy as np
         if a is None:raise RuntimeError('PDAL DEM read failed')
-        if np.any(np.isfinite(a)&(a!=NODATA)):
+        if np.any(np.isfinite(a)&(a!=out_nd)):
             dest=work/f'{name}.tif'
             output=gdal.Translate(str(dest),ds,srcWin=[halo,halo,size,size],format='GTiff',
                 creationOptions=['TILED=YES','COMPRESS=DEFLATE','BIGTIFF=IF_SAFER'])
