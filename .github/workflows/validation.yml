@@ -80,6 +80,12 @@ jobs:
           ref: 2849ef4cd0c072c57d77b635bf68ef7d788a5a75
           path: baseline
           persist-credentials: false
+      - name: Checkout the pre-raster-fix baseline (33e370a) for the raster reproduction step
+        uses: actions/checkout@v7
+        with:
+          ref: 33e370a22013fdd57244698b765eb700f78a8692
+          path: baseline_raster
+          persist-credentials: false
       - uses: mamba-org/setup-micromamba@v2
         with:
           environment-name: dem-pointcloud
@@ -114,6 +120,17 @@ jobs:
           REAL_PDAL_PATH="$(which pdal)" PYTHONPATH=. python -m unittest -v \
             dem_map_sheets.tests.test_real_pdal_nodata.CollisionStopTests 2>&1 || true
 
+      - name: Reproduce the raster near-NoData defect on 33e370a (FAILURES ARE EXPECTED here)
+        # Evidence only (GDAL 3.13.3, the Windows report's GDAL): the same raster tests
+        # against the code before the raster fix. continue-on-error keeps the job green.
+        continue-on-error: true
+        shell: bash -el {0}
+        run: |
+          cp dem_map_sheets/tests/test_raster_nodata_window.py dem_map_sheets/tests/input_fixtures.py baseline_raster/dem_map_sheets/tests/
+          cd baseline_raster
+          PYTHONPATH=. python -m unittest -v \
+            dem_map_sheets.tests.test_raster_nodata_window.WindowsReportReproductionTests 2>&1 || true
+
   plugin-zip:
     # Deterministic plugin ZIP for the hand-off (same commit -> same bytes).
     runs-on: ubuntu-24.04
@@ -128,4 +145,3 @@ jobs:
         with:
           name: plugin-zip
           path: ${{ runner.temp }}/zip/*
-

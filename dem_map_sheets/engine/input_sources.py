@@ -11,9 +11,9 @@ import time
 import zipfile
 import numpy as np
 try:
-    from ._constants import NODATA, DEFAULT_OUTPUT_NODATA
+    from ._constants import NODATA, DEFAULT_OUTPUT_NODATA, nodata_window
 except ImportError:
-    from _constants import NODATA, DEFAULT_OUTPUT_NODATA
+    from _constants import NODATA, DEFAULT_OUTPUT_NODATA, nodata_window
 try:
     from .gsi_dem import parse_dem
     from .forest_dem import expand_sources, classify_sources, read_lem, autodetect_xyz
@@ -374,26 +374,71 @@ def has_world_file(path):
     return any(p.is_file() and p.name.lower() in expected for p in path.parent.iterdir())
 
 
-def _scan_source_band(band, declared_nodata, output_nodata):
+def collision_cells(block, finite, declared_nodata, output_nodata):
+    """Mask of valid cells GDAL would re-read as the output NoData value.
+
+    Valid means finite and not exactly the declared NoData. The comparison
+    with the OUTPUT value uses the GDAL-equivalent window (nodata_window),
+    not exact equality: GDAL reads a cell near a NoData value as NoData
+    (-9999 +-4 float32 steps), so a valid -9999.002 would vanish in the
+    deliverable although it differs from -9999.  Such cells are never
+    converted here.
+    """
+    _v,lo,hi=nodata_window(output_nodata)
+    valid=finite
+    if declared_nodata is not None and math.isfinite(declared_nodata):
+        # The declaration is an exact value: a cell that merely lies near it is
+        # different data (and is reported as a collision when it is also near the
+        # output NoData), never silently treated as missing.
+        valid=valid&(block!=np.float32(declared_nodata))
+    return valid&(block>=lo)&(block<=hi)
+
+
+def add_collision_detail(detail, hits, y0, values, geotransform, limit=5):
+    """Fold one block's collision cells into ``detail`` (first positions, distinct values)."""
+    rows,cols=np.nonzero(hits)
+    found=detail.setdefault('values',set())
+    if len(found)<16:found.update(float(v) for v in np.unique(values[hits])[:16])
+    positions=detail.setdefault('positions',[])
+    for r,c in zip(rows[:limit],cols[:limit]):
+        if len(positions)>=limit:break
+        row=int(y0+r);col=int(c);entry={'row':row,'col':col,'value':float(values[r,c])}
+        if geotransform is not None:
+            gt=geotransform
+            entry['x']=gt[0]+(col+0.5)*gt[1]+(row+0.5)*gt[2]
+            entry['y']=gt[3]+(col+0.5)*gt[4]+(row+0.5)*gt[5]
+        positions.append(entry)
+
+
+def collision_entry(source, stage, output_nodata, count, detail):
+    """One structured collision record (input_report / run.json failure_detail)."""
+    _v,lo,hi=nodata_window(output_nodata)
+    return {'source':str(source),'stage':stage,'role':'output','output_nodata':float(output_nodata),
+            'nodata_window':[lo,hi],'count':int(count),'nodata_collision_cells':int(count),
+            'values':sorted(detail.get('values',())),'positions':detail.get('positions',[]),
+            'value':(sorted(detail.get('values',()))[0] if detail.get('values') else float(output_nodata))}
+
+
+def _scan_source_band(band, declared_nodata, output_nodata, geotransform=None, detail=None):
     """One blockwise pass over a source band before warping.
 
     Returns (nonfinite, collisions). Non-finite cells (NaN and
     +/-inf) are not elevations; the caller materializes them as
-    missing. Collisions are finite cells equal to output_nodata
-    that are NOT missing under the rule the warp will honour
-    (declared_nodata when finite, else non-finiteness alone): valid
+    missing. Collisions are valid cells equal to - or within GDAL's
+    NoData tolerance of - output_nodata (see collision_cells): valid
     data the output would silently re-read as NoData. They are
-    counted so the caller can surface them, never converted here.
+    counted (and, when ``detail`` is given, located) so the caller can
+    stop with a precise report; nothing is converted here.
     """
     nonfinite=0;collisions=0
-    declared_finite=declared_nodata is not None and math.isfinite(declared_nodata)
     for y in range(0,band.YSize,512):
         block=band.ReadAsArray(0,y,band.XSize,min(512,band.YSize-y))
         if block is None:raise RuntimeError('Raster read failed during NoData scan')
         finite=np.isfinite(block)
         nonfinite+=int((~finite).sum())
-        valid=finite&(block!=declared_nodata) if declared_finite else finite
-        collisions+=int((valid&(block==output_nodata)).sum())
+        hits=collision_cells(block,finite,declared_nodata,output_nodata)
+        n=int(hits.sum());collisions+=n
+        if n and detail is not None:add_collision_detail(detail,hits,y,block,geotransform)
     return nonfinite,collisions
 
 
@@ -455,7 +500,8 @@ def normalize(path, dest, c, gdal, osr, feedback=None, override_nodata=True, not
         declared=c['source_nodata']
     else:
         declared=band_nodata
-    nonfinite,collisions=_scan_source_band(band,declared,out_nd)
+    scan_detail={}
+    nonfinite,collisions=_scan_source_band(band,declared,out_nd,src.GetGeoTransform(),scan_detail)
     if override_nodata and c['source_nodata'] is None and band_nodata is None and not nonfinite:
         raise ValueError('Source raster has no NoData definition; specify source_nodata: '+str(path)+'（入力ラスタにNoDataが定義されていません。source_nodata（元データの無効値）を指定してください）')
     source=crs_of(c['input_crs'] or src.GetProjection(),osr)
@@ -475,8 +521,10 @@ def normalize(path, dest, c, gdal, osr, feedback=None, override_nodata=True, not
     if vrt is None:raise RuntimeError('Input reprojection failed: '+str(path))
     vrt.FlushCache();vrt=src=None
     if notes is not None and (nonfinite or collisions):
-        notes.append({'source':str(path),'nonfinite_cells':int(nonfinite),
-                      'nodata_collision_cells':int(collisions)})
+        entry={'source':str(path),'nonfinite_cells':int(nonfinite),
+               'nodata_collision_cells':int(collisions)}
+        if collisions:entry.update(collision_entry(path,'normalize',out_nd,collisions,scan_detail))
+        notes.append(entry)
     cancelled(feedback)
     return str(dest)
 
@@ -598,16 +646,45 @@ class NoDataCollisionError(ValueError):
     collision into a silent skip."""
 
 
-def nodata_collision_error(source, output_nodata, cells):
+def nodata_collision_error(source, output_nodata, cells, entries=None):
     """The bilingual stop for a NoData collision: it names the input,
-    the colliding value and the detected cell count, and gives the
-    remedy (choose a different output NoData value and re-run)."""
-    return NoDataCollisionError(
-        f'出力NoData値（{output_nodata}）と一致する有効な標高セルが、入力「{source}」に {cells} 件あります。'
-        'このまま出力すると、それらのセルは欠測として読み取られてしまいます。'
+    the colliding value(s), example positions and the detected cell
+    count, and gives the remedy (choose a different output NoData value
+    and re-run).
+
+    A collision is a valid cell equal to - or inside GDAL's NoData
+    tolerance of - the output NoData value (nodata_window), because GDAL
+    would read it back as missing. ``entries`` (collision_entry dicts)
+    become ``error.detail`` and are recorded in run.json failure_detail.
+    """
+    first=(entries or [{}])[0]
+    _v,lo,hi=nodata_window(output_nodata)
+    values=first.get('values') or []
+    shown=', '.join(f'{v:.4f}' for v in values[:6])
+    where=''
+    positions=first.get('positions') or []
+    if positions:
+        shown_pos=[]
+        for p in positions[:3]:
+            shown_pos.append(f"行{p['row']}・列{p['col']}"+(f"（x={p['x']:.3f}, y={p['y']:.3f}）" if 'x' in p else ''))
+        where=' 位置の例: '+'、'.join(shown_pos)+'。'
+        where_en=' Example positions: '+'; '.join(
+            f"row {p['row']}, col {p['col']}"+(f" (x={p['x']:.3f}, y={p['y']:.3f})" if 'x' in p else '') for p in positions[:3])+'.'
+    else:
+        where_en=''
+    detail_ja=f' 該当値の例: {shown}。' if shown else ''
+    detail_en=f' Example values: {shown}.' if shown else ''
+    error=NoDataCollisionError(
+        f'出力NoData値（{output_nodata}）と一致する、またはGDALが欠測と読み取る近傍（{lo:.4f}〜{hi:.4f}）の有効な標高セルが、入力「{source}」に {cells} 件あります。'
+        f'{detail_ja}{where}'
+        'このまま出力すると、それらのセルは欠測として読み取られてしまうため、処理を停止しました（値の置換や補間は行っていません）。'
         '別の出力NoData値を指定して、再実行してください。'
-        f' (Valid elevation cells equal to the output NoData value ({output_nodata}) were found in '
-        f'{source}: {cells} cell(s). Processing stopped; specify a different output NoData value and re-run.)')
+        f' (Valid elevation cells equal to the output NoData value ({output_nodata}), or inside the range GDAL reads as NoData '
+        f'({lo:.4f} to {hi:.4f}), were found in {source}: {cells} cell(s).{detail_en}{where_en} '
+        'Processing stopped; no value was replaced or interpolated. Specify a different output NoData value and re-run.)')
+    error.detail=[dict(e) for e in entries] if entries else [
+        {'source':str(source),'role':'output','output_nodata':float(output_nodata),'count':int(cells)}]
+    return error
 
 
 def point_nodata_collision_error(hits):
@@ -893,10 +970,13 @@ def prepare_inputs(c,work,gdal,osr,feedback=None):
             # so the report names each colliding input; the except
             # below records the run as failed in input_report.json.
             total=sum(e['nodata_collision_cells'] for e in collisions)
-            error=nodata_collision_error(collisions[0]['source'],output_nodata_of(c),total)
+            entries=[{k:v for k,v in e.items() if k not in ('nonfinite_cells','nodata_collision_cells')} for e in collisions]
+            error=nodata_collision_error(collisions[0]['source'],output_nodata_of(c),total,entries)
             if len(collisions)>1:
+                detail=error.detail
                 error=NoDataCollisionError(str(error)+
-                    f' ほか {len(collisions)-1} 件の入力でも衝突が検出されています（詳細は input_report.json の nodata_value_collisions）。')
+                    f' ほか {len(collisions)-1} 件の入力でも衝突が検出されています（詳細は input_report.json の nodata_value_collisions と run.json の failure_detail）。')
+                error.detail=detail
             raise error
         report.update(status='completed',prepared_rasters=outputs);save()
         return {**c,'inputs':outputs,'source_nodata':None},report

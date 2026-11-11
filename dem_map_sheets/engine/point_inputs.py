@@ -9,8 +9,10 @@ import subprocess  # nosec B404: PDAL CLI requires an external process
 import time
 try:
     from .input_sources import cancelled, say, crs_of, text_rows, NODATA, output_nodata_of, point_nodata_collision_error
+    from ._constants import nodata_window as _f32_window
 except ImportError:
     from input_sources import cancelled, say, crs_of, text_rows, NODATA, output_nodata_of, point_nodata_collision_error
+    from _constants import nodata_window as _f32_window
 
 
 def executable(c):
@@ -103,27 +105,6 @@ def _ascii_temp_area():
     for extra in created[1:]:shutil.rmtree(extra,ignore_errors=True)
     if created:return created[0]
     return Path(tempfile.mkdtemp(prefix='dem_map_sheets_pdal_'))
-
-
-def _f32_window(value):
-    """(float32 value, lo, hi): every double GDAL will read back as that NoData value.
-
-    Output rasters are Float32 and GDAL's NoData comparison is not exact: it
-    treats a cell within about 4*FLT_EPSILON*|value| of the NoData value as
-    NoData (measured on GDAL 3.8.4 with BuildVRT srcNodata / mask bands:
-    -9999 +-4 float32 steps, -32768 +-7, -999999 +-7).  A point inside that
-    window would therefore come back missing downstream even though it is
-    not exactly equal.  The window uses 5*FLT_EPSILON*|value| (a margin over
-    GDAL's rule) and never less than the float32 rounding step, which also
-    keeps the test independent of LAS scale/offset rounding (a stored -9999
-    can read back as -9999.0000000002).
-    """
-    import numpy as np
-    v=np.float32(value)
-    eps=float(np.finfo(np.float32).eps)
-    half_step=(float(np.nextafter(v,np.float32(np.inf)))-float(v))/2
-    tol=max(5*eps*abs(float(v)),half_step)
-    return float(v),float(v)-tol,float(v)+tol
 
 
 def _guard_windows(c):

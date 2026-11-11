@@ -7,7 +7,7 @@ import os
 import shutil
 import sys
 import numpy as np
-from .input_sources import DEFAULTS as INPUT_DEFAULTS, DEFAULT_OUTPUT_NODATA, NoDataCollisionError, NoUsableInputError, _invalid_raster_reason, crs_of, discover, nodata_collision_error, output_nodata_of, prepare_inputs, proj_epsg_version, validate_input
+from .input_sources import DEFAULTS as INPUT_DEFAULTS, DEFAULT_OUTPUT_NODATA, NoDataCollisionError, add_collision_detail, collision_cells, collision_entry, NoUsableInputError, _invalid_raster_reason, crs_of, discover, nodata_collision_error, output_nodata_of, prepare_inputs, proj_epsg_version, validate_input
 from .map_sheets import intersecting_sheets, dimensions
 
 
@@ -68,7 +68,7 @@ def materialize_geotiff(source,dest,gdal,output_nodata=DEFAULT_OUTPUT_NODATA,not
         # because Translate alone cannot remap values.
         upd=gdal.Open(str(tmp),gdal.GA_Update)
         if upd is None: raise RuntimeError('GeoTIFF creation failed: '+str(dest))
-        collisions=0
+        collisions=0;scan_detail={};geotransform=upd.GetGeoTransform()
         for band_index in range(1,upd.RasterCount+1):
             band=upd.GetRasterBand(band_index)
             src_nodata=src_nodatas[band_index-1] if src_nodatas is not None else None
@@ -76,30 +76,38 @@ def materialize_geotiff(source,dest,gdal,output_nodata=DEFAULT_OUTPUT_NODATA,not
                 block=band.ReadAsArray(0,y,band.XSize,min(512,band.YSize-y))
                 if block is None: raise RuntimeError('GeoTIFF creation failed: '+str(dest))
                 finite=np.isfinite(block)
+                # Missing = exactly the source's own NoData value (the
+                # normalized inputs carry exactly output_nodata there) or
+                # non-finite. A cell merely NEAR it is valid data and, when
+                # near the output NoData, a collision (counted below).
                 if src_nodata is not None and math.isfinite(src_nodata):
                     missing=~finite|(block==src_nodata)
                 else:
                     missing=~finite
-                # Valid cells already equal to output_nodata cannot
-                # be told apart from missing ones once the band
-                # NoData is set; count them so the run can stop
-                # instead of silently reclassifying them (below).
-                collisions+=int((finite&~missing&(block==output_nodata)).sum())
+                # Valid cells equal to - or inside GDAL's NoData
+                # tolerance of - output_nodata cannot be told apart from
+                # missing ones once the band NoData is set; count and
+                # locate them so the run can stop instead of silently
+                # reclassifying them (below).
+                hits=collision_cells(block,finite&~missing,None,output_nodata)
+                n=int(hits.sum());collisions+=n
+                if n:add_collision_detail(scan_detail,hits,y,block,geotransform)
                 if missing.any():
                     block=np.where(missing,output_nodata,block).astype('float32')
                     if band.WriteArray(block,0,y)!=0:
                         raise RuntimeError('GeoTIFF creation failed: '+str(dest))
             band.SetNoDataValue(output_nodata)
         upd.FlushCache();upd=None
+        entry=collision_entry(source,'materialize',output_nodata,collisions,scan_detail) if collisions else None
         if notes is not None and collisions:
-            notes.append({'source':str(source),'nodata_collision_cells':int(collisions)})
+            notes.append(entry)
         if collisions:
             # Issue #8 independent audit (2026-11-11): never publish
             # a file whose valid cells the new NoData metadata would
             # reclassify as missing. Raising routes through the
             # except below, which removes the temporary file, so the
             # destination is never created.
-            raise nodata_collision_error(source,output_nodata,collisions)
+            raise nodata_collision_error(source,output_nodata,collisions,[entry])
         os.replace(tmp,dest)
     except BaseException:
         try:tmp.unlink()
