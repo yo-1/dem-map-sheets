@@ -29,6 +29,11 @@ def _types_ok(value, t):
 def validate(value, schema, path='$'):
     """必要な構文のみのサブセット検証。エラー文字列のリストを返す。"""
     errors = []
+    if '$ref' in schema:
+        node = SCHEMA
+        for part in schema['$ref'].lstrip('#/').split('/'):
+            node = node[part]
+        return validate(value, node, path)
     if 'const' in schema and value != schema['const']:
         errors.append(f'{path}: const {schema["const"]!r} != {value!r}')
     if 'enum' in schema and value not in schema['enum']:

@@ -2,6 +2,7 @@
 
 ## 次期版（開発中・版番号未定）
 
+- run.json に `provenance`（入力・出力の SHA-256 とサイズ、取得できた環境版 QGIS/GDAL/PROJ/PDAL/プラグイン/numpy/Python）を追加（Issue #16 PR-3）。成功時のみ計算し、ハッシュ失敗は run を失敗にせず `incomplete` と記録、失敗・中断時は未計算（`partial`）。パスと秘密情報は記録しない。`record_hashes=false` で省略可。
 - run.json に `schema_version`（現在 1）と `qa_status`（常に `not_evaluated`。納品合否の自動判定はしない）を追加し、仕様を `RUN_JSON.md`／`schema/run.schema.json` に文書化（Issue #16 PR-2）。既存キー・`status`（completed/failed/cancelled）・出力値は変更なし。
 - 出力DEMのNoData値を設定可能にした（設定キー `output_nodata`／パラメータ `OUTPUT_NODATA`、既定 -9999）。従来の固定値 -999999 は内部中間生成物の番兵としてのみ残る。run.json の `output_nodata` には実効値を記録する。
 - パススルー経路（materialize）でセル値そのものを出力NoData値へ付け替えるよう修正（従来はメタデータのみで、入力の欠測値が標高として残っていた）。
