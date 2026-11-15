@@ -9,6 +9,7 @@ import sys
 import numpy as np
 from .input_sources import DEFAULTS as INPUT_DEFAULTS, DEFAULT_OUTPUT_NODATA, NoDataCollisionError, add_collision_detail, collision_cells, collision_entry, NoUsableInputError, _invalid_raster_reason, crs_of, discover, nodata_collision_error, output_nodata_of, prepare_inputs, proj_epsg_version, validate_input
 from .map_sheets import intersecting_sheets, dimensions
+from .run_record import finalize_run_record
 
 
 def _has_valid_cells(path,gdal):
@@ -180,7 +181,7 @@ def _record_failure(out,work,config,exc,feedback):
         # record does not depend on parsing the message text.
         detail=getattr(exc,'detail',None)
         if detail is not None:record['failure_detail']=detail
-        (Path(out)/'run.json').write_text(json.dumps(record,ensure_ascii=False,indent=2),encoding='utf-8')
+        (Path(out)/'run.json').write_text(json.dumps(finalize_run_record(record),ensure_ascii=False,indent=2),encoding='utf-8')
     except Exception as record_exc:
         # Recording must never mask the original error; leave a
         # trace on stderr and let the original exception propagate.
@@ -618,6 +619,6 @@ def _run(config,output_dir,gdal,osr,feedback=None):
     except BaseException as exc:
         _record_failure(out,work,config,exc,feedback)
         raise
-    (out/'run.json').write_text(json.dumps(manifest,ensure_ascii=False,indent=2),encoding='utf-8')
+    (out/'run.json').write_text(json.dumps(finalize_run_record(manifest),ensure_ascii=False,indent=2),encoding='utf-8')
     if not config.get('keep_work',False):shutil.rmtree(work,ignore_errors=True)
     return manifest

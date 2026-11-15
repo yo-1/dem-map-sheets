@@ -1,0 +1,29 @@
+# run.json 仕様（schema_version 1）
+
+機械可読な定義は `schema/run.schema.json`（JSON Schema 2020-12）。
+
+## 共通キー（全 run.json に必須）
+| キー | 型 | 説明 |
+|---|---|---|
+| `schema_version` | integer | 現在 `1`。キーが無い run.json は旧形式（0 相当） |
+| `qa_status` | string | 常に `"not_evaluated"`。納品合否の自動判定は行わない |
+| `status` | string | `completed` / `failed` / `cancelled`（従来どおり） |
+| `merge_priority` | string | `last` / `first` / `auto` |
+
+`status` は処理の終了状態、`qa_status` は品質評価の状態で、互いに独立。
+全NoData出力（`warnings` に `all_nodata_output`）でも `status=completed`・`qa_status=not_evaluated` のまま。
+
+## completed のとき必須
+`input_type, source_count, warnings, source_dems, merged_dem, target_crs, cell_size,
+vertical_reference, vertical_conversion, output_nodata, work_retained`。
+任意: `priority_selection, input_report, nodata_value_collisions, source_datum_label,
+proj_epsg_version, terrainrgb_xyz`。
+
+## failed / cancelled のとき
+必須: `error`。任意: `failure_detail, work_dir, work_retained, work_removed_bytes,
+work_retained_bytes, outputs_present`。
+（algorithm 層の補正経路では最小形 `status, error, merge_priority` のみとなる場合がある。）
+
+## 互換規則
+- 既存キー・値は変更しない。追加のみ。読み手は未知キーを無視すること。
+- `schema_version` を上げるのは既存キーの意味・型を変える場合のみ。

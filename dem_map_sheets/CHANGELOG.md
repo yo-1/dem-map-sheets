@@ -2,6 +2,7 @@
 
 ## 次期版（開発中・版番号未定）
 
+- run.json に `schema_version`（現在 1）と `qa_status`（常に `not_evaluated`。納品合否の自動判定はしない）を追加し、仕様を `RUN_JSON.md`／`schema/run.schema.json` に文書化（Issue #16 PR-2）。既存キー・`status`（completed/failed/cancelled）・出力値は変更なし。
 - 出力DEMのNoData値を設定可能にした（設定キー `output_nodata`／パラメータ `OUTPUT_NODATA`、既定 -9999）。従来の固定値 -999999 は内部中間生成物の番兵としてのみ残る。run.json の `output_nodata` には実効値を記録する。
 - パススルー経路（materialize）でセル値そのものを出力NoData値へ付け替えるよう修正（従来はメタデータのみで、入力の欠測値が標高として残っていた）。
 - 入力ラスタの NaN・±inf セルを欠測として扱うよう修正（従来は数値として素通りし、優先側の NaN が下位の有効値を覆う場合があった）。
