@@ -16,6 +16,7 @@ from qgis.core import (
 
 
 from .engine.run_manifest import ensure_manifest_schema
+from .engine.provenance import build_provenance, provenance_warnings
 
 
 class DEMMapSheetsAlgorithm(QgsProcessingAlgorithm):
@@ -176,6 +177,11 @@ class DEMMapSheetsAlgorithm(QgsProcessingAlgorithm):
                     self.parameterAsInt(parameters,'XYZ_MIN',context),self.parameterAsInt(parameters,'XYZ_MAX',context),
                     self.parameterAsInt(parameters,'XYZ_LIMIT',context),gdal,osr,feedback)
                 manifest['terrainrgb_xyz']=info
+                try:
+                    manifest['provenance'] = build_provenance(c.get('inputs', []), result_dir, gdal, osr)
+                    manifest.setdefault('warnings', []).extend(provenance_warnings(manifest['provenance']))
+                except Exception:
+                    manifest.setdefault('warnings', []).append('provenance_collection_failed')
                 (result_dir/'run.json').write_text(json.dumps(ensure_manifest_schema(manifest),ensure_ascii=False,indent=2),encoding='utf-8')
             feedback.setProgress(100)
             return {'MERGED_DEM':manifest['merged_dem'],'SOURCE_DEMS':str(result_dir/'01_source_dem'),
@@ -192,6 +198,11 @@ class DEMMapSheetsAlgorithm(QgsProcessingAlgorithm):
                 except Exception:
                     failed={'merge_priority':c['merge_priority']}
                 failed.update(status='cancelled' if feedback.isCanceled() else 'failed',error=str(exc))
+                try:
+                    failed['provenance'] = build_provenance(c.get('inputs', []), result_dir, gdal, osr, complete=False)
+                    failed.setdefault('warnings', []).extend(provenance_warnings(failed['provenance']))
+                except Exception:
+                    failed.setdefault('warnings', []).append('provenance_collection_failed')
                 record.write_text(json.dumps(ensure_manifest_schema(failed),ensure_ascii=False,indent=2),encoding='utf-8')
             except Exception as record_exc:
                 # The original exception still takes precedence, but the
