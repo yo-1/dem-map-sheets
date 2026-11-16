@@ -1,3 +1,4 @@
+from .run_manifest import ensure_manifest_schema
 """DEM normalization, metadata-aware overlap selection and merge pipeline. GPL-3.0-only."""
 from pathlib import Path
 import csv
@@ -113,7 +114,7 @@ def _record_failure(out,work,config,exc,feedback):
             'work_dir':str(work),'work_retained':retained_mode,
             'work_removed_bytes':removed,'work_retained_bytes':retained,
             'outputs_present':outputs_present}
-        (Path(out)/'run.json').write_text(json.dumps(record,ensure_ascii=False,indent=2),encoding='utf-8')
+        (Path(out)/'run.json').write_text(json.dumps(ensure_manifest_schema(record),ensure_ascii=False,indent=2),encoding='utf-8')
     except Exception as record_exc:
         # Recording must never mask the original error; leave a
         # trace on stderr and let the original exception propagate.
@@ -532,6 +533,6 @@ def _run(config,output_dir,gdal,osr,feedback=None):
     except BaseException as exc:
         _record_failure(out,work,config,exc,feedback)
         raise
-    (out/'run.json').write_text(json.dumps(manifest,ensure_ascii=False,indent=2),encoding='utf-8')
+    (out/'run.json').write_text(json.dumps(ensure_manifest_schema(manifest),ensure_ascii=False,indent=2),encoding='utf-8')
     if not config.get('keep_work',False):shutil.rmtree(work,ignore_errors=True)
     return manifest
