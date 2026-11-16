@@ -1,4 +1,5 @@
 from .run_manifest import ensure_manifest_schema
+from .provenance import build_provenance, provenance_warnings
 """DEM normalization, metadata-aware overlap selection and merge pipeline. GPL-3.0-only."""
 from pathlib import Path
 import csv
@@ -114,6 +115,11 @@ def _record_failure(out,work,config,exc,feedback):
             'work_dir':str(work),'work_retained':retained_mode,
             'work_removed_bytes':removed,'work_retained_bytes':retained,
             'outputs_present':outputs_present}
+        try:
+            record['provenance'] = build_provenance(config.get('inputs', []), out, complete=False)
+            record['warnings'] = provenance_warnings(record['provenance'])
+        except Exception:
+            record['warnings'] = ['provenance_collection_failed']
         (Path(out)/'run.json').write_text(json.dumps(ensure_manifest_schema(record),ensure_ascii=False,indent=2),encoding='utf-8')
     except Exception as record_exc:
         # Recording must never mask the original error; leave a
@@ -533,6 +539,11 @@ def _run(config,output_dir,gdal,osr,feedback=None):
     except BaseException as exc:
         _record_failure(out,work,config,exc,feedback)
         raise
+    try:
+        manifest['provenance'] = build_provenance(config.get('inputs', []), out, gdal, osr)
+        manifest['warnings'].extend(provenance_warnings(manifest['provenance']))
+    except Exception:
+        manifest['warnings'].append('provenance_collection_failed')
     (out/'run.json').write_text(json.dumps(ensure_manifest_schema(manifest),ensure_ascii=False,indent=2),encoding='utf-8')
     if not config.get('keep_work',False):shutil.rmtree(work,ignore_errors=True)
     return manifest
