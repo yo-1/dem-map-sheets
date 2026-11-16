@@ -47,6 +47,10 @@ work_retained_bytes, outputs_present`。
 - **`record_hashes=false`**（設定キー）で省略可能（`skipped`）。サイズは記録する。
 - **漏えい対策**: 入力は basename のみ（同名は `index` で区別）、出力は相対パス。環境変数値・ホスト名・ユーザー名・実行ファイルのパスは記録しない。PDAL は版の先頭行のみ。
 
+### `complete` の意味（重要）
+`provenance.status=complete` は、**記録対象の範囲内で**全ハッシュが取得できたことだけを意味する。LEM/TFW 等の同梱ファイル、ZIP 展開物、TerrainRGB タイル本体は対象外のため、**納品物一式の完全照合ではない**。納品判定（`qa_status`）とも無関係である。
+`run()` 後に追加される成果物（TerrainRGB の `xyz.json`）のハッシュに失敗した場合も、`provenance.status=incomplete` と `warnings` の `provenance_incomplete` を記録する。
+
 ### 初版の制約
 - 対象は discover 後の主入力ファイルのみ。LEM と TFW 等の同梱ファイル、ZIP の展開物は対象外（ZIP は ZIP 自体）。
 - TerrainRGB はタイル本体をハッシュせず `xyz.json` のみ。

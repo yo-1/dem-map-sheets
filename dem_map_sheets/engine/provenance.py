@@ -185,3 +185,7 @@ def add_output_file(manifest, out_dir, path, is_canceled=None):
     prov['outputs'].append(rec)
     if compute and rec['sha256_status'] != 'ok':
         prov['status'] = STATUS_INCOMPLETE
+        # 後追加ファイルのハッシュ失敗でも、成功時と同じく警告を残す
+        warnings = manifest.setdefault('warnings', [])
+        if 'provenance_incomplete' not in warnings:
+            warnings.append('provenance_incomplete')

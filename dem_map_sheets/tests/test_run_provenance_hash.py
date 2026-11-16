@@ -239,6 +239,28 @@ class ProvenanceRunTests(unittest.TestCase):
         self.assertEqual(last['path'], '03_terrainrgb_xyz/xyz.json')
         self.assertEqual(last['sha256'], _sha(extra / 'xyz.json'))
 
+    def test_late_output_hash_failure_adds_warning(self):
+        # algorithm 層が run() 後に追加する xyz.json のハッシュ失敗
+        out, rec, _ = self._run('latefail', [self.a])
+        self.assertEqual(rec['provenance']['status'], 'complete')
+        self.assertNotIn('provenance_incomplete', rec['warnings'])
+        extra = out / '03_terrainrgb_xyz'
+        extra.mkdir()
+        (extra / 'xyz.json').write_text('{"a":1}')
+        with mock.patch.object(provenance, 'sha256_of', side_effect=PermissionError('denied')):
+            provenance.add_output_file(rec, out, extra / 'xyz.json')
+        self.assertEqual(rec['status'], 'completed')
+        self.assertEqual(rec['qa_status'], 'not_evaluated')
+        self.assertEqual(rec['provenance']['status'], 'incomplete')
+        self.assertEqual(rec['warnings'].count('provenance_incomplete'), 1)
+        last = rec['provenance']['outputs'][-1]
+        self.assertEqual((last['sha256'], last['error']), (None, 'PermissionError'))
+        self.assertEqual(validate(rec, SCHEMA), [])
+        # 二重追加しない
+        with mock.patch.object(provenance, 'sha256_of', side_effect=PermissionError('denied')):
+            provenance.add_output_file(rec, out, extra / 'xyz.json')
+        self.assertEqual(rec['warnings'].count('provenance_incomplete'), 1)
+
 
 if __name__ == '__main__':
     unittest.main()
