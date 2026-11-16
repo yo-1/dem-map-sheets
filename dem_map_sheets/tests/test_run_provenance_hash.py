@@ -261,6 +261,29 @@ class ProvenanceRunTests(unittest.TestCase):
             provenance.add_output_file(rec, out, extra / 'xyz.json')
         self.assertEqual(rec['warnings'].count('provenance_incomplete'), 1)
 
+    def test_late_output_failure_keeps_other_hashes_and_dem(self):
+        out, rec, _ = self._run('latekeep', [self.a])
+        before = [dict(o) for o in rec['provenance']['outputs']]
+        dem_hash = _sha(out / '02_merged_dem.tif')
+        extra = out / 'x'
+        extra.mkdir()
+        (extra / 'xyz.json').write_text('{}')
+        with mock.patch.object(provenance, 'sha256_of', side_effect=OSError('boom')):
+            provenance.add_output_file(rec, out, extra / 'xyz.json')
+        self.assertEqual(rec['provenance']['outputs'][:len(before)], before)
+        self.assertEqual(_sha(out / '02_merged_dem.tif'), dem_hash)
+
+    def test_late_output_with_record_hashes_false_no_hash_no_warning(self):
+        out, rec, _ = self._run('lateskip', [self.a], record_hashes=False)
+        extra = out / 'x'
+        extra.mkdir()
+        (extra / 'xyz.json').write_text('{}')
+        with mock.patch.object(provenance, 'sha256_of', side_effect=AssertionError('must not hash')):
+            provenance.add_output_file(rec, out, extra / 'xyz.json')
+        self.assertEqual(rec['provenance']['status'], 'skipped')
+        self.assertNotIn('provenance_incomplete', rec['warnings'])
+        self.assertIsNone(rec['provenance']['outputs'][-1]['sha256'])
+
 
 if __name__ == '__main__':
     unittest.main()
