@@ -15,6 +15,9 @@ from qgis.core import (
 )
 
 
+from .engine.run_manifest import ensure_manifest_schema
+
+
 class DEMMapSheetsAlgorithm(QgsProcessingAlgorithm):
     def name(self): return 'create'
     def displayName(self): return f'DEM作成・マージ・TerrainRGB XYZタイル v{VERSION}'
@@ -173,7 +176,7 @@ class DEMMapSheetsAlgorithm(QgsProcessingAlgorithm):
                     self.parameterAsInt(parameters,'XYZ_MIN',context),self.parameterAsInt(parameters,'XYZ_MAX',context),
                     self.parameterAsInt(parameters,'XYZ_LIMIT',context),gdal,osr,feedback)
                 manifest['terrainrgb_xyz']=info
-                (result_dir/'run.json').write_text(json.dumps(manifest,ensure_ascii=False,indent=2),encoding='utf-8')
+                (result_dir/'run.json').write_text(json.dumps(ensure_manifest_schema(manifest),ensure_ascii=False,indent=2),encoding='utf-8')
             feedback.setProgress(100)
             return {'MERGED_DEM':manifest['merged_dem'],'SOURCE_DEMS':str(result_dir/'01_source_dem'),
                     'XYZ_FOLDER':xyz,'MANIFEST':str(result_dir/'run.json')}
@@ -189,7 +192,7 @@ class DEMMapSheetsAlgorithm(QgsProcessingAlgorithm):
                 except Exception:
                     failed={'merge_priority':c['merge_priority']}
                 failed.update(status='cancelled' if feedback.isCanceled() else 'failed',error=str(exc))
-                record.write_text(json.dumps(failed,ensure_ascii=False,indent=2),encoding='utf-8')
+                record.write_text(json.dumps(ensure_manifest_schema(failed),ensure_ascii=False,indent=2),encoding='utf-8')
             except Exception as record_exc:
                 # The original exception still takes precedence, but the
                 # recording failure itself is logged, not silent (r4).
