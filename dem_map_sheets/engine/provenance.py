@@ -108,6 +108,16 @@ def _find_key(obj, key):
     return None
 
 
+def _extract_pdal_version(output):
+    """Extract a numeric PDAL version without retaining paths or command output."""
+    import re
+    for line in str(output).splitlines():
+        match = re.match(r'^\\s*pdal\\s+([0-9]+(?:\\.[0-9]+){1,3})(?=$|[\\s(])', line, re.IGNORECASE)
+        if match:
+            return match.group(1)
+    return None
+
+
 def collect_environment(gdal=None, osr=None, config=None, input_report=None):
     """取得できた版のみ記録する（取得不能な項目はキー自体を省略）。"""
     env = {'python': platform.python_version()}
@@ -137,8 +147,9 @@ def collect_environment(gdal=None, osr=None, config=None, input_report=None):
         env['qgis'] = str(qgis)
     pdal = _find_key(input_report, 'pdal_version') if input_report is not None else None
     if pdal:
-        # 先頭行のみ（実行ファイルのパス等を含み得るため全文は記録しない）
-        env['pdal'] = str(pdal).strip().splitlines()[0][:200]
+        version = _extract_pdal_version(pdal)
+        if version is not None:
+            env['pdal'] = version
     try:
         info = Path(__file__).resolve().parents[1] / 'build_info.json'
         if info.is_file():
