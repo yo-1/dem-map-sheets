@@ -112,7 +112,7 @@ def _extract_pdal_version(output):
     """Extract a numeric PDAL version without retaining paths or command output."""
     import re
     for line in str(output).splitlines():
-        match = re.match(r'^\\s*pdal\\s+([0-9]+(?:\\.[0-9]+){1,3})(?=$|[\\s(])', line, re.IGNORECASE)
+        match = re.match(r'^\s*pdal\s+([0-9]+(?:\.[0-9]+){1,3})(?=$|[\s(])', line, re.IGNORECASE)
         if match:
             return match.group(1)
     return None
