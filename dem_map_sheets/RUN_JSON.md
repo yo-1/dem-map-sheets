@@ -45,7 +45,7 @@ work_retained_bytes, outputs_present`。
 - **失敗・中断時**はハッシュを計算しない（`partial`）。入力は名前・サイズのみ。生成済み出力は従来の `outputs_present`（パスとサイズ）で確認する。
 - **キャンセル**はハッシュ計算中も尊重し、`status=cancelled` で記録する。
 - **`record_hashes=false`**（設定キー）で省略可能（`skipped`）。サイズは記録する。
-- **漏えい対策**: 入力は basename のみ（同名は `index` で区別）、出力は相対パス。環境変数値・ホスト名・ユーザー名・実行ファイルのパスは記録しない。PDAL は版の先頭行のみ。
+- **漏えい対策**: 入力は basename のみ（同名は `index` で区別）、出力は相対パス。環境変数値・ホスト名・ユーザー名・実行ファイルのパスは記録しない。PDAL は `pdal --version` の出力から `pdal X.Y.Z` の行だけを抽出して記録する（Windows の先頭罫線等は無視。特定できなければ `pdal` キーを省略）。
 
 ### `complete` の意味（重要）
 `provenance.status=complete` は、**記録対象の範囲内で**全ハッシュが取得できたことだけを意味する。LEM/TFW 等の同梱ファイル、ZIP 展開物、TerrainRGB タイル本体は対象外のため、**納品物一式の完全照合ではない**。納品判定（`qa_status`）とも無関係である。

@@ -12,6 +12,7 @@
 import hashlib
 import json
 import platform
+import re
 from pathlib import Path
 
 CHUNK = 1024 * 1024
@@ -108,6 +109,25 @@ def _find_key(obj, key):
     return None
 
 
+# `pdal --version` の行頭が「pdal 2.10.0」の形のときだけ版とみなす。
+# Windows は先頭に罫線（-----）が付くため固定行番号は使わない。
+_PDAL_VERSION_LINE = re.compile(r'^pdal[ \t]+(\d{1,4}(?:\.\d{1,4}){1,3})(?:[ \t(]|$)', re.IGNORECASE)
+
+
+def parse_pdal_version(text):
+    """複数行の出力から「pdal X.Y.Z」を返す。特定できなければ None。
+
+    版番号以外（git-version、パス、他の行）は記録しない。
+    """
+    if not isinstance(text, str):
+        return None
+    for line in text.splitlines():
+        match = _PDAL_VERSION_LINE.match(line.strip()[:300])
+        if match:
+            return 'pdal ' + match.group(1)
+    return None
+
+
 def collect_environment(gdal=None, osr=None, config=None, input_report=None):
     """取得できた版のみ記録する（取得不能な項目はキー自体を省略）。"""
     env = {'python': platform.python_version()}
@@ -136,9 +156,10 @@ def collect_environment(gdal=None, osr=None, config=None, input_report=None):
     if qgis:
         env['qgis'] = str(qgis)
     pdal = _find_key(input_report, 'pdal_version') if input_report is not None else None
+    pdal = parse_pdal_version(pdal)
     if pdal:
-        # 先頭行のみ（実行ファイルのパス等を含み得るため全文は記録しない）
-        env['pdal'] = str(pdal).strip().splitlines()[0][:200]
+        # 版行のみ。特定できない場合はキー自体を省略する（偽の版を残さない）
+        env['pdal'] = pdal
     try:
         info = Path(__file__).resolve().parents[1] / 'build_info.json'
         if info.is_file():

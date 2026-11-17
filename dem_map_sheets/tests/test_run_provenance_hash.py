@@ -79,9 +79,45 @@ class ProvenanceUnitTests(unittest.TestCase):
         self.assertNotIn('pdal', env)
         self.assertNotIn('sekrit-value-123', json.dumps(env))
 
-    def test_pdal_version_first_line_only(self):
-        env = provenance.collect_environment(None, None, {}, {'a': [{'pdal_version': 'pdal 2.10.2 (git-version: x)\n/usr/bin/pdal\n'}]})
-        self.assertEqual(env['pdal'], 'pdal 2.10.2 (git-version: x)')
+    def _pdal_env(self, text):
+        return provenance.collect_environment(None, None, {}, {'a': [{'pdal_version': text}]})
+
+    def test_pdal_version_linux_single_line(self):
+        self.assertEqual(self._pdal_env('pdal 2.10.2 (git-version: x)\n')['pdal'], 'pdal 2.10.2')
+        self.assertEqual(self._pdal_env('PDAL 2.10.0')['pdal'], 'pdal 2.10.0')
+
+    def test_pdal_version_windows_rule_line_first(self):
+        text = ('-----------------------------------------------------\n'
+                'pdal 2.10.0 (git-version: eb9126)\n'
+                '-----------------------------------------------------\n')
+        self.assertEqual(self._pdal_env(text)['pdal'], 'pdal 2.10.0')
+
+    def test_pdal_version_line_in_the_middle(self):
+        text = 'warning: something\r\n\r\n  pdal 2.8.1 (git-version: a)\r\nother\r\n'
+        self.assertEqual(self._pdal_env(text)['pdal'], 'pdal 2.8.1')
+
+    def test_pdal_version_unknown_key_omitted(self):
+        for text in ('-----\n-----\n', '', '   \n', 'pdal: command not found', 'error: no version',
+                     'pdal', 'pdal x.y', 'pdal 2', 'xpdal 2.10.0', 'C:\\Users\\bob\\pdal 2.10.0',
+                     None, 42, ['pdal 2.10.0']):
+            with self.subTest(text=text):
+                self.assertNotIn('pdal', self._pdal_env(text))
+
+    def test_pdal_version_no_secret_or_path_leak(self):
+        text = ('API_TOKEN=sekrit-123\n/home/alice/bin/pdal\n'
+                'pdal 2.10.0 (git-version: sekrit-abc /home/alice)\n')
+        env = self._pdal_env(text)
+        self.assertEqual(env['pdal'], 'pdal 2.10.0')
+        self.assertNotIn('sekrit', json.dumps(env))
+        self.assertNotIn('alice', json.dumps(env))
+
+    def test_pdal_version_not_fixed_to_line_number(self):
+        # 2行目決め打ちではなく、版行が3行目以降でも拾う
+        self.assertEqual(self._pdal_env('a\nb\nc\npdal 2.9.3\n')['pdal'], 'pdal 2.9.3')
+
+    def test_pdal_version_first_nested_report_value_used(self):
+        report = {'sources': [{'x': 1}], 'deep': [{'inner': {'pdal_version': '----\npdal 2.10.2 (g)\n'}}]}
+        self.assertEqual(provenance.collect_environment(None, None, {}, report)['pdal'], 'pdal 2.10.2')
 
     def test_output_files_exclude_work_and_run_json(self):
         (self.root / 'work').mkdir()
