@@ -5,7 +5,7 @@ from dem_map_sheets.engine.provenance import _extract_pdal_version, collect_envi
 
 class PdalVersionTests(unittest.TestCase):
     def test_windows_multiline(self):
-        output = "----------------------\\npdal 2.10.0 (git-version: eb9126)\\n----------------------"
+        output = "----------------------\npdal 2.10.0 (git-version: eb9126)\n----------------------"
         self.assertEqual(_extract_pdal_version(output), "2.10.0")
         self.assertEqual(collect_environment(input_report={"pdal_version": output})["pdal"], "2.10.0")
 
@@ -19,7 +19,7 @@ class PdalVersionTests(unittest.TestCase):
                 self.assertNotIn("pdal", collect_environment(input_report={"pdal_version": value}))
 
     def test_no_leakage(self):
-        value = "-----\\npdal 2.10.0 (git-version: abc) /Users/alice/token\\n"
+        value = "-----\npdal 2.10.0 (git-version: abc) /Users/alice/token\n"
         self.assertEqual(_extract_pdal_version(value), "2.10.0")
         self.assertNotIn("alice", collect_environment(input_report={"pdal_version": value})["pdal"])
         self.assertIsNone(_extract_pdal_version("pdal 2.10.0evil /tmp/private"))
