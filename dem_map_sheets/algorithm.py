@@ -112,6 +112,7 @@ class DEMMapSheetsAlgorithm(QgsProcessingAlgorithm):
         from .engine.input_sources import explicit_file_parameter
         from .engine.dem_pipeline import run
         from .engine.terrainrgb import write_terrainrgb_xyz
+        from .engine.run_record import finalize_run_record
         # GDAL exceptions are scoped inside engine run() (W-13); the
         # plugin must not flip the process-global setting for QGIS.
         mode=['raster','gsi','text','lidar','forest'][self.parameterAsEnum(parameters,'INPUT_TYPE',context)]
@@ -177,7 +178,7 @@ class DEMMapSheetsAlgorithm(QgsProcessingAlgorithm):
                     self.parameterAsInt(parameters,'XYZ_LIMIT',context),gdal,osr,feedback,
                     nodata=manifest['output_nodata'])
                 manifest['terrainrgb_xyz']=info
-                (result_dir/'run.json').write_text(json.dumps(manifest,ensure_ascii=False,indent=2),encoding='utf-8')
+                (result_dir/'run.json').write_text(json.dumps(finalize_run_record(manifest),ensure_ascii=False,indent=2),encoding='utf-8')
             feedback.setProgress(100)
             return {'MERGED_DEM':manifest['merged_dem'],'SOURCE_DEMS':str(result_dir/'01_source_dem'),
                     'XYZ_FOLDER':xyz,'MANIFEST':str(result_dir/'run.json')}
@@ -193,7 +194,7 @@ class DEMMapSheetsAlgorithm(QgsProcessingAlgorithm):
                 except Exception:
                     failed={'merge_priority':c['merge_priority']}
                 failed.update(status='cancelled' if feedback.isCanceled() else 'failed',error=str(exc))
-                record.write_text(json.dumps(failed,ensure_ascii=False,indent=2),encoding='utf-8')
+                record.write_text(json.dumps(finalize_run_record(failed),ensure_ascii=False,indent=2),encoding='utf-8')
             except Exception as record_exc:
                 # The original exception still takes precedence, but the
                 # recording failure itself is logged, not silent (r4).

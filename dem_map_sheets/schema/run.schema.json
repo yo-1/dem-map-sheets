@@ -1,0 +1,57 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://github.com/yo-1/dem-map-sheets/schema/run.schema.json",
+  "title": "DEM Map Sheets run.json",
+  "description": "run.json schema_version 1. 追加キーは許容する（additionalProperties=true）。旧形式（schema_version なし）は読み手側で 0 相当として扱う。",
+  "type": "object",
+  "required": ["schema_version", "qa_status", "status", "merge_priority"],
+  "properties": {
+    "schema_version": {"type": "integer", "const": 1},
+    "qa_status": {"type": "string", "enum": ["not_evaluated"],
+      "description": "納品合否の自動判定は行わない。常に not_evaluated。status とは独立。"},
+    "status": {"type": "string", "enum": ["completed", "failed", "cancelled"]},
+    "merge_priority": {"type": "string", "enum": ["last", "first", "auto"]},
+    "error": {"type": "string"},
+    "failure_detail": {},
+    "work_dir": {"type": "string"},
+    "work_retained": {"type": "string", "enum": ["all", "none", "diagnostics_only"]},
+    "work_removed_bytes": {"type": ["integer", "null"]},
+    "work_retained_bytes": {"type": ["integer", "null"]},
+    "outputs_present": {
+      "oneOf": [
+        {"type": "string", "const": "unknown"},
+        {"type": "array", "items": {"type": "object",
+          "required": ["path", "bytes"],
+          "properties": {"path": {"type": "string"}, "bytes": {"type": "integer"}}}}
+      ]
+    },
+    "input_type": {"type": "string"},
+    "source_count": {"type": "integer", "minimum": 0},
+    "warnings": {"type": "array", "items": {"type": "string"}},
+    "source_dems": {"type": "array"},
+    "merged_dem": {"type": "string"},
+    "target_crs": {"type": "string"},
+    "cell_size": {"type": "number"},
+    "vertical_reference": {},
+    "vertical_conversion": {"type": "boolean"},
+    "priority_selection": {},
+    "input_report": {},
+    "output_nodata": {"type": "number"},
+    "nodata_value_collisions": {"type": "array"},
+    "source_datum_label": {"type": ["string", "array", "null"]},
+    "proj_epsg_version": {},
+    "terrainrgb_xyz": {"type": "object"}
+  },
+  "allOf": [
+    {
+      "if": {"properties": {"status": {"const": "completed"}}},
+      "then": {"required": ["input_type", "source_count", "warnings", "source_dems",
+        "merged_dem", "target_crs", "cell_size", "vertical_reference", "vertical_conversion",
+        "output_nodata", "work_retained"]}
+    },
+    {
+      "if": {"properties": {"status": {"enum": ["failed", "cancelled"]}}},
+      "then": {"required": ["error"]}
+    }
+  ]
+}
