@@ -64,7 +64,7 @@ class ForestGridReferenceTests(unittest.TestCase):
             self.assertAlmostEqual(got, want, delta=1e-7)
         self.assertEqual(size, (2, 2))
         np.testing.assert_array_equal(array, np.array([[101, 102], [103, 104]]))
-        self.assertEqual(nodata, -999999.0)
+        self.assertEqual(nodata, -999999.0)  # the raw forest_grid intermediate keeps the canonical sentinel
         self.assertEqual(authid, '6677')
         detected = report['detected'][0]
         self.assertEqual(detected['grid_cell'], s)

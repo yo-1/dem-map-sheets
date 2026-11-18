@@ -26,7 +26,10 @@ import zipfile
 
 import numpy as np
 
-NODATA = -999999.0
+try:
+    from ._constants import NODATA
+except ImportError:
+    from _constants import NODATA
 ARCHIVE_MEMBER_LIMIT = 512 * 1024 * 1024
 ARCHIVE_TOTAL_LIMIT = 8 * 1024 * 1024 * 1024
 SIDECARS = {'.tfw', '.tifw', '.wld', '.prj', '.aux.xml'}

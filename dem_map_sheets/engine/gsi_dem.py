@@ -5,7 +5,10 @@ import re
 import xml.etree.ElementTree as ET  # nosec B405: DTD/entities rejected below
 import numpy as np
 
-NODATA = -999999.0
+try:
+    from ._constants import NODATA
+except ImportError:
+    from _constants import NODATA
 
 
 def local(tag): return tag.rsplit('}', 1)[-1]

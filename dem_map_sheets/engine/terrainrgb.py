@@ -8,17 +8,30 @@ import math
 from pathlib import Path
 import numpy as np
 
+try:
+    from ._constants import NODATA, DEFAULT_OUTPUT_NODATA
+except ImportError:
+    from _constants import NODATA, DEFAULT_OUTPUT_NODATA
+
 HALF_WORLD = 20037508.342789244
-NODATA = -999999.0
 
 
-def encode_elevation(values, valid=None):
+def encode_elevation(values, valid=None, nodata=NODATA):
     arr = np.asarray(values, dtype='float64')
     if valid is None:
-        valid = np.isfinite(arr) & (arr != NODATA)
+        # Default mask for direct callers: the DEM's NoData value
+        # (the canonical sentinel unless the caller passes the
+        # output_nodata its DEM actually carries). The XYZ writer
+        # always passes an explicit mask derived from the DEM.
+        valid = np.isfinite(arr) & (arr != nodata)
     if np.any(valid & (~np.isfinite(arr) | (arr < -10000.0) | (arr > 1667721.5))):
         raise ValueError("TerrainRGB valid elevation outside encodable range [-10000, 1667721.5] m")
-    # Standard tile NoData decodes to -9999 m; keep alpha transparent as well.
+    # Standard tile NoData decodes to -9999 m; keep alpha transparent
+    # as well. This -9999 is fixed by the TerrainRGB tile
+    # specification and is NOT the DEM's output_nodata: a missing
+    # pixel encodes as -9999 whatever NoData the source DEM uses,
+    # and a valid -9999 m elevation stays distinguishable through
+    # its alpha of 255. Do not "unify" the two values.
     code = np.rint((np.where(valid,arr,-9999.0) + 10000.0) * 10.0)
     code = np.clip(code, 0, 256**3 - 1).astype('uint32')
     r = ((code >> 16) & 255).astype('uint8')
@@ -64,10 +77,17 @@ def _bounds_3857(src, osr):
         max(x for x,y in corners), max(y for x,y in corners), 41)
 
 
-def write_terrainrgb_xyz(source, destination, min_zoom, max_zoom, max_tiles, gdal, osr, feedback=None):
+def write_terrainrgb_xyz(source, destination, min_zoom, max_zoom, max_tiles, gdal, osr, feedback=None, nodata=None):
     src = gdal.Open(str(source))
     if src is None or src.RasterCount != 1:
         raise ValueError('TerrainRGB input must be a single-band DEM')
+    # The warp target and the valid mask follow the DEM's own
+    # NoData (the pipeline's output_nodata, recorded on the merged
+    # DEM's band); the caller's configured value is the fallback
+    # when the band carries no usable definition.
+    dem_nodata = src.GetRasterBand(1).GetNoDataValue()
+    if dem_nodata is None or not math.isfinite(dem_nodata):
+        dem_nodata = float(nodata) if nodata is not None else DEFAULT_OUTPUT_NODATA
     bounds = _bounds_3857(src, osr)
     ranges = [(z, tile_range(bounds, z)) for z in range(min_zoom, max_zoom + 1)]
     total = sum(max(0, x1-x0+1) * max(0, y1-y0+1) for _, (x0,x1,y0,y1) in ranges)
@@ -90,12 +110,12 @@ def write_terrainrgb_xyz(source, destination, min_zoom, max_zoom, max_tiles, gda
                         raise RuntimeError('XYZ generation cancelled')
                     tile = gdal.Warp('', src, format='MEM', dstSRS='EPSG:3857',
                         outputBounds=tile_bounds(z,x,y), width=256, height=256,
-                        outputType=gdal.GDT_Float32, dstNodata=NODATA,
+                        outputType=gdal.GDT_Float32, dstNodata=dem_nodata,
                         resampleAlg='bilinear', errorThreshold=0)
                     if tile is None: raise RuntimeError('XYZ DEM warp failed')
                     elev = tile.GetRasterBand(1).ReadAsArray()
                     nd = tile.GetRasterBand(1).GetNoDataValue()
-                    valid = np.isfinite(elev) & (elev != (nd if nd is not None else NODATA))
+                    valid = np.isfinite(elev) & (elev != (nd if nd is not None else dem_nodata))
                     if valid.any():
                         rgba = encode_elevation(elev, valid)
                         mem = gdal.GetDriverByName('MEM').Create('',256,256,4,gdal.GDT_Byte)

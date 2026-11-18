@@ -63,3 +63,110 @@ jobs:
       - name: KD-5 tiny-raster check (GDAL 3.10)
         shell: bash -el {0}
         run: PYTHONPATH=. python -m unittest validation.known_defects.test_known_defects.KnownDefects.test_kd5_tiny_raster_finer_than_output_cell_does_not_hang
+
+  gdal384:
+    # GDAL 3.8.4 from conda-forge (the version the apt-based `synthetic` job is meant
+    # to cover). The apt install step of that job hangs on GitHub runners at times,
+    # which left the 3.8.4 result unverified; this job needs no apt.
+    runs-on: ubuntu-24.04
+    steps:
+      - uses: actions/checkout@v7
+        with:
+          persist-credentials: false
+      - uses: mamba-org/setup-micromamba@v2
+        with:
+          environment-name: dem-gdal384
+          create-args: >-
+            python=3.12
+            gdal=3.8.4
+            numpy
+            pillow
+          init-shell: bash
+      - name: GDAL version
+        shell: bash -el {0}
+        run: python -c "from osgeo import gdal; print('GDAL', gdal.__version__)"
+      - name: Unit tests (GDAL 3.8.4, conda-forge)
+        shell: bash -el {0}
+        run: PYTHONPATH=. python -m unittest discover -s dem_map_sheets/tests -v
+
+  real-pdal:
+    # Real PDAL (conda-forge, environment-pointcloud.yml): the tests that
+    # the mocked suites cannot vouch for (NoData point guard, interpolation
+    # methods, LAS/LAZ reading, axis order). REAL_PDAL_PATH enables the
+    # opt-in real-PDAL tests.
+    runs-on: ubuntu-24.04
+    steps:
+      - uses: actions/checkout@v7
+        with:
+          persist-credentials: false
+      - name: Checkout the pre-fix baseline (2849ef4) for the reproduction step
+        uses: actions/checkout@v7
+        with:
+          ref: 2849ef4cd0c072c57d77b635bf68ef7d788a5a75
+          path: baseline
+          persist-credentials: false
+      - name: Checkout the pre-raster-fix baseline (33e370a) for the raster reproduction step
+        uses: actions/checkout@v7
+        with:
+          ref: 33e370a22013fdd57244698b765eb700f78a8692
+          path: baseline_raster
+          persist-credentials: false
+      - uses: mamba-org/setup-micromamba@v2
+        with:
+          environment-name: dem-pointcloud
+          environment-file: dem_map_sheets/environment-pointcloud.yml
+          init-shell: bash
+      - name: Versions
+        shell: bash -el {0}
+        run: |
+          pdal --version
+          python -c "from osgeo import gdal; print('GDAL', gdal.__version__)"
+      - name: PDAL probe
+        shell: bash -el {0}
+        run: REAL_PDAL_PATH="$(which pdal)" python validation/pdal_probe.py
+      - name: Unit tests with real PDAL (includes the opt-in real-PDAL tests)
+        shell: bash -el {0}
+        run: REAL_PDAL_PATH="$(which pdal)" PYTHONPATH=. python -m unittest discover -s dem_map_sheets/tests -v
+      - name: Fixture generator for the Windows/QGIS verification (real PDAL)
+        shell: bash -el {0}
+        run: |
+          python validation/make_nodata_fixtures.py --pdal "$(which pdal)" --out "$RUNNER_TEMP/nodata_fixtures"
+          test "$(ls "$RUNNER_TEMP/nodata_fixtures" | wc -l)" -ge 16
+      - name: Reproduce Issue #9 on the pre-fix baseline 2849ef4 (FAILURES ARE EXPECTED here)
+        # Evidence only: the same real-PDAL tests run against the code before the
+        # fix. Failing sub-tests show where the old code let a -9999 point
+        # (IDW/mean) or a LAS -999999 point through. continue-on-error keeps
+        # the job green; read this step's log, not its status.
+        continue-on-error: true
+        shell: bash -el {0}
+        run: |
+          cp dem_map_sheets/tests/test_real_pdal_nodata.py baseline/dem_map_sheets/tests/
+          cd baseline
+          REAL_PDAL_PATH="$(which pdal)" PYTHONPATH=. python -m unittest -v \
+            dem_map_sheets.tests.test_real_pdal_nodata.CollisionStopTests 2>&1 || true
+
+      - name: Reproduce the raster near-NoData defect on 33e370a (FAILURES ARE EXPECTED here)
+        # Evidence only (GDAL 3.13.3, the Windows report's GDAL): the same raster tests
+        # against the code before the raster fix. continue-on-error keeps the job green.
+        continue-on-error: true
+        shell: bash -el {0}
+        run: |
+          cp dem_map_sheets/tests/test_raster_nodata_window.py dem_map_sheets/tests/input_fixtures.py baseline_raster/dem_map_sheets/tests/
+          cd baseline_raster
+          PYTHONPATH=. python -m unittest -v \
+            dem_map_sheets.tests.test_raster_nodata_window.WindowsReportReproductionTests 2>&1 || true
+
+  plugin-zip:
+    # Deterministic plugin ZIP for the hand-off (same commit -> same bytes).
+    runs-on: ubuntu-24.04
+    steps:
+      - uses: actions/checkout@v7
+        with:
+          persist-credentials: false
+      - name: Build the plugin ZIP
+        run: python3 validation/build_plugin_zip.py --commit HEAD --out "$RUNNER_TEMP/zip"
+      - name: Upload the ZIP and its manifest
+        uses: actions/upload-artifact@v7
+        with:
+          name: plugin-zip
+          path: ${{ runner.temp }}/zip/*

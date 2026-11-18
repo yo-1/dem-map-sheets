@@ -11,13 +11,15 @@ import time
 import zipfile
 import numpy as np
 try:
+    from ._constants import NODATA, DEFAULT_OUTPUT_NODATA, nodata_window
+except ImportError:
+    from _constants import NODATA, DEFAULT_OUTPUT_NODATA, nodata_window
+try:
     from .gsi_dem import parse_dem
     from .forest_dem import expand_sources, classify_sources, read_lem, autodetect_xyz
 except ImportError:
     from gsi_dem import parse_dem
     from forest_dem import expand_sources, classify_sources, read_lem, autodetect_xyz
-
-NODATA = -999999.0
 DEFAULTS = dict(input_type='raster', recursive=True, normalize_rasters=False,
     skip_invalid_rasters=False,
     input_crs='', vertical_reference='', text_delimiter='comma', text_encoding='utf-8-sig',
@@ -192,6 +194,31 @@ def _scan_directory(directory, recursive, extensions, feedback=None):
     return sorted(found, key=lambda p: str(p).lower())
 
 
+def check_output_nodata(value):
+    """Validate an output NoData value and return it as a float.
+
+    Every deliverable is Float32, so a value Float32 cannot hold
+    exactly would silently differ from the value recorded in
+    run.json and from the value a user specified; reject it here
+    instead of letting it drift downstream.
+    """
+    if isinstance(value,bool) or not isinstance(value,(int,float)) or not math.isfinite(value):
+        raise ValueError('output_nodata must be a finite number（出力NoData値は有限の数で指定してください）')
+    if float(np.float32(value)) != float(value):
+        raise ValueError('output_nodata must be exactly representable in Float32（出力NoData値はFloat32で正確に表せる値で指定してください）')
+    return float(value)
+
+
+def output_nodata_of(c):
+    """Effective output NoData for a pipeline config: the configured
+    value when present (validate_input checks it), else the default.
+    Direct engine callers that build configs without the
+    pipeline-level key get the same default run() applies."""
+    if 'output_nodata' in c and c['output_nodata'] is not None:
+        return check_output_nodata(c['output_nodata'])
+    return DEFAULT_OUTPUT_NODATA
+
+
 def validate_input(c):
     if c['input_type'] not in EXTENSIONS:
         raise ValueError('input_type: raster, gsi, text, lidar or forest')
@@ -203,6 +230,8 @@ def validate_input(c):
             or not isinstance(c['cell_size'],(int,float))
             or not math.isfinite(c['cell_size']) or c['cell_size']<=0):
         raise ValueError('cell_size must be finite and positive（セルサイズは有限の正数を指定してください）')
+    if 'output_nodata' in c:
+        check_output_nodata(c['output_nodata'])
     if 'target_crs' in c and (not isinstance(c['target_crs'],str)
             or not c['target_crs'].strip()):
         raise ValueError('target_crs is required（対象CRSを指定してください）')
@@ -345,30 +374,157 @@ def has_world_file(path):
     return any(p.is_file() and p.name.lower() in expected for p in path.parent.iterdir())
 
 
-def normalize(path, dest, c, gdal, osr, feedback=None, override_nodata=True):
+def collision_cells(block, finite, declared_nodata, output_nodata):
+    """Mask of valid cells GDAL would re-read as the output NoData value.
+
+    Valid means finite and not exactly the declared NoData. The comparison
+    with the OUTPUT value uses the GDAL-equivalent window (nodata_window),
+    not exact equality: GDAL reads a cell near a NoData value as NoData
+    (-9999 +-4 float32 steps), so a valid -9999.002 would vanish in the
+    deliverable although it differs from -9999.  Such cells are never
+    converted here.
+    """
+    _v,lo,hi=nodata_window(output_nodata)
+    valid=finite
+    if declared_nodata is not None and math.isfinite(declared_nodata):
+        # The declaration is an exact value: a cell that merely lies near it is
+        # different data (and is reported as a collision when it is also near the
+        # output NoData), never silently treated as missing.
+        valid=valid&(block!=np.float32(declared_nodata))
+    return valid&(block>=lo)&(block<=hi)
+
+
+def add_collision_detail(detail, hits, y0, values, geotransform, limit=5):
+    """Fold one block's collision cells into ``detail`` (first positions, distinct values)."""
+    rows,cols=np.nonzero(hits)
+    found=detail.setdefault('values',set())
+    if len(found)<16:found.update(float(v) for v in np.unique(values[hits])[:16])
+    positions=detail.setdefault('positions',[])
+    for r,c in zip(rows[:limit],cols[:limit]):
+        if len(positions)>=limit:break
+        row=int(y0+r);col=int(c);entry={'row':row,'col':col,'value':float(values[r,c])}
+        if geotransform is not None:
+            gt=geotransform
+            entry['x']=gt[0]+(col+0.5)*gt[1]+(row+0.5)*gt[2]
+            entry['y']=gt[3]+(col+0.5)*gt[4]+(row+0.5)*gt[5]
+        positions.append(entry)
+
+
+def collision_entry(source, stage, output_nodata, count, detail):
+    """One structured collision record (input_report / run.json failure_detail)."""
+    _v,lo,hi=nodata_window(output_nodata)
+    return {'source':str(source),'stage':stage,'role':'output','output_nodata':float(output_nodata),
+            'nodata_window':[lo,hi],'count':int(count),'nodata_collision_cells':int(count),
+            'values':sorted(detail.get('values',())),'positions':detail.get('positions',[]),
+            'value':(sorted(detail.get('values',()))[0] if detail.get('values') else float(output_nodata))}
+
+
+def _scan_source_band(band, declared_nodata, output_nodata, geotransform=None, detail=None):
+    """One blockwise pass over a source band before warping.
+
+    Returns (nonfinite, collisions). Non-finite cells (NaN and
+    +/-inf) are not elevations; the caller materializes them as
+    missing. Collisions are valid cells equal to - or within GDAL's
+    NoData tolerance of - output_nodata (see collision_cells): valid
+    data the output would silently re-read as NoData. They are
+    counted (and, when ``detail`` is given, located) so the caller can
+    stop with a precise report; nothing is converted here.
+    """
+    nonfinite=0;collisions=0
+    for y in range(0,band.YSize,512):
+        block=band.ReadAsArray(0,y,band.XSize,min(512,band.YSize-y))
+        if block is None:raise RuntimeError('Raster read failed during NoData scan')
+        finite=np.isfinite(block)
+        nonfinite+=int((~finite).sum())
+        hits=collision_cells(block,finite,declared_nodata,output_nodata)
+        n=int(hits.sum());collisions+=n
+        if n and detail is not None:add_collision_detail(detail,hits,y,block,geotransform)
+    return nonfinite,collisions
+
+
+def _write_cleaned_source(src, band, dest, fill, gdal):
+    """Copy a single-band source with every non-finite cell replaced
+    by fill and the band NoData set to fill. Used only when a source
+    actually carries NaN/inf cells: how the GDAL warper treats NaN
+    as a missing value alongside a declared srcNodata is not
+    portable across GDAL versions (audit P5/P6), so the conversion
+    happens here, explicitly, instead of relying on warper quirks.
+    The copy lives next to the warp destination inside the run's
+    work directory and shares its lifetime.
+    """
+    driver=gdal.GetDriverByName('GTiff')
+    out=driver.Create(str(dest),src.RasterXSize,src.RasterYSize,1,gdal.GDT_Float32,
+        options=['TILED=YES','COMPRESS=DEFLATE','PREDICTOR=3','BIGTIFF=IF_SAFER'])
+    if out is None:raise RuntimeError('Cannot create '+str(dest))
+    out.SetGeoTransform(src.GetGeoTransform())
+    projection=src.GetProjection()
+    if projection:out.SetProjection(projection)
+    oband=out.GetRasterBand(1)
+    oband.SetNoDataValue(float(fill))
+    for y in range(0,band.YSize,512):
+        block=band.ReadAsArray(0,y,band.XSize,min(512,band.YSize-y))
+        if block is None:raise RuntimeError('Raster read failed: '+str(dest))
+        block=np.where(np.isfinite(block),block,fill).astype('float32')
+        if oband.WriteArray(block,0,y)!=0:raise RuntimeError('Raster write failed')
+    out.FlushCache();out=None
+
+
+def normalize(path, dest, c, gdal, osr, feedback=None, override_nodata=True, notes=None):
     """Create a disk-backed warped VRT on the common target grid.
 
     A VRT keeps province-scale inputs virtual.  The pipeline later reads only
     the map sheet being rendered, so total source pixel count is not a RAM
     limit and no full-size normalized copy is materialized here.
+
+    Missing cells in the result always carry the config's
+    output_nodata. Which finite cells are missing is decided by the
+    source's own declared definition - the band NoData, or
+    source_nodata when the caller overrides - never by guessing
+    -9999/-999999. Non-finite cells (NaN/inf) are missing by
+    construction: they are materialized to the declared value (or
+    to output_nodata when the source declares nothing) before
+    warping, so they can neither leak through as numbers nor hide
+    valid lower-priority data at merge time. A raster with no
+    definition and no non-finite cells still stops with an error:
+    there is nothing to interpret its values with.
     """
     cancelled(feedback)
     src=gdal.Open(str(path))
     if src is None or src.RasterCount!=1:raise ValueError('Expected single-band elevation raster: '+str(path))
     band=src.GetRasterBand(1)
-    if override_nodata and c['source_nodata'] is None and band.GetNoDataValue() is None:
-        raise ValueError('Source raster has no NoData definition; specify source_nodata: '+str(path)+'（入力ラスタにNoDataが定義されていません。source_nodata（元データの無効値）を指定してください）')
     if band.GetScale() not in (None,1) or band.GetOffset() not in (None,0):
         raise ValueError('Apply raster scale/offset to elevation values before import: '+str(path))
+    out_nd=output_nodata_of(c)
+    band_nodata=band.GetNoDataValue()
+    if override_nodata and c['source_nodata'] is not None:
+        declared=c['source_nodata']
+    else:
+        declared=band_nodata
+    scan_detail={}
+    nonfinite,collisions=_scan_source_band(band,declared,out_nd,src.GetGeoTransform(),scan_detail)
+    if override_nodata and c['source_nodata'] is None and band_nodata is None and not nonfinite:
+        raise ValueError('Source raster has no NoData definition; specify source_nodata: '+str(path)+'（入力ラスタにNoDataが定義されていません。source_nodata（元データの無効値）を指定してください）')
     source=crs_of(c['input_crs'] or src.GetProjection(),osr)
     kwargs=dict(format='VRT',srcSRS=source.ExportToWkt(),dstSRS=c['target_crs'],
         xRes=c['cell_size'],yRes=c['cell_size'],targetAlignedPixels=True,
-        outputType=gdal.GDT_Float32,resampleAlg='bilinear',dstNodata=NODATA,errorThreshold=0)
+        outputType=gdal.GDT_Float32,resampleAlg='bilinear',dstNodata=out_nd,errorThreshold=0)
     if override_nodata and c['source_nodata'] is not None:kwargs['srcNodata']=c['source_nodata']
+    warp_source=src
+    if nonfinite:
+        fill=declared if (declared is not None and math.isfinite(declared)) else out_nd
+        clean_dest=Path(str(dest)).with_name(Path(str(dest)).stem+'_src.tif')
+        _write_cleaned_source(src,band,clean_dest,fill,gdal)
+        warp_source=gdal.Open(str(clean_dest))
+        if warp_source is None:raise RuntimeError('Input reprojection failed: '+str(path))
     dest=Path(dest).with_suffix('.vrt')
-    vrt=gdal.Warp(str(dest),src,**kwargs)
+    vrt=gdal.Warp(str(dest),warp_source,**kwargs)
     if vrt is None:raise RuntimeError('Input reprojection failed: '+str(path))
     vrt.FlushCache();vrt=src=None
+    if notes is not None and (nonfinite or collisions):
+        entry={'source':str(path),'nonfinite_cells':int(nonfinite),
+               'nodata_collision_cells':int(collisions)}
+        if collisions:entry.update(collision_entry(path,'normalize',out_nd,collisions,scan_detail))
+        notes.append(entry)
     cancelled(feedback)
     return str(dest)
 
@@ -447,7 +603,7 @@ def infer_grid_cell(path,c,feedback=None):
 
 
 
-def normalize_gsi_groups(paths,work,c,gdal,osr,feedback=None):
+def normalize_gsi_groups(paths,work,c,gdal,osr,feedback=None,notes=None):
     groups=[];base=None
     for path in paths:
         ds=gdal.Open(path);srs=ds.GetSpatialRef();gt=ds.GetGeoTransform()
@@ -469,7 +625,7 @@ def normalize_gsi_groups(paths,work,c,gdal,osr,feedback=None):
         if mosaic is None:raise RuntimeError('GSI mosaic failed')
         mosaic.FlushCache();mosaic=None
         results.append(normalize(mosaicpath,work/f'aligned_group_{i:06d}.tif',
-            {**c,'input_crs':'','max_input_pixels':c['max_pixels']},gdal,osr,feedback,False))
+            {**c,'input_crs':'','max_input_pixels':c['max_pixels']},gdal,osr,feedback,False,notes))
     return results
 
 
@@ -477,6 +633,95 @@ class NoUsableInputError(ValueError):
     """Every input was unusable. A ValueError subclass so per-source
     callers (auto priority) can tell 'this source alone yielded
     nothing' apart from other input errors when skipping is on."""
+
+
+class NoDataCollisionError(ValueError):
+    """A valid input cell equals the configured output NoData value.
+
+    Raised instead of warning-and-continue (Issue #8 independent
+    audit, 2026-11-11): such a cell would be re-read as missing in
+    every deliverable, so the run stops and no successful product is
+    published. The enforcement points raise it outside the per-input
+    skip handlers, so skip_invalid_rasters never converts a
+    collision into a silent skip."""
+
+
+def nodata_collision_error(source, output_nodata, cells, entries=None):
+    """The bilingual stop for a NoData collision: it names the input,
+    the colliding value(s), example positions and the detected cell
+    count, and gives the remedy (choose a different output NoData value
+    and re-run).
+
+    A collision is a valid cell equal to - or inside GDAL's NoData
+    tolerance of - the output NoData value (nodata_window), because GDAL
+    would read it back as missing. ``entries`` (collision_entry dicts)
+    become ``error.detail`` and are recorded in run.json failure_detail.
+    """
+    first=(entries or [{}])[0]
+    _v,lo,hi=nodata_window(output_nodata)
+    values=first.get('values') or []
+    shown=', '.join(f'{v:.4f}' for v in values[:6])
+    where=''
+    positions=first.get('positions') or []
+    if positions:
+        shown_pos=[]
+        for p in positions[:3]:
+            shown_pos.append(f"行{p['row']}・列{p['col']}"+(f"（x={p['x']:.3f}, y={p['y']:.3f}）" if 'x' in p else ''))
+        where=' 位置の例: '+'、'.join(shown_pos)+'。'
+        where_en=' Example positions: '+'; '.join(
+            f"row {p['row']}, col {p['col']}"+(f" (x={p['x']:.3f}, y={p['y']:.3f})" if 'x' in p else '') for p in positions[:3])+'.'
+    else:
+        where_en=''
+    detail_ja=f' 該当値の例: {shown}。' if shown else ''
+    detail_en=f' Example values: {shown}.' if shown else ''
+    error=NoDataCollisionError(
+        f'出力NoData値（{output_nodata}）と一致する、またはGDALが欠測と読み取る近傍（{lo:.4f}〜{hi:.4f}）の有効な標高セルが、入力「{source}」に {cells} 件あります。'
+        f'{detail_ja}{where}'
+        'このまま出力すると、それらのセルは欠測として読み取られてしまうため、処理を停止しました（値の置換や補間は行っていません）。'
+        '別の出力NoData値を指定して、再実行してください。'
+        f' (Valid elevation cells equal to the output NoData value ({output_nodata}), or inside the range GDAL reads as NoData '
+        f'({lo:.4f} to {hi:.4f}), were found in {source}: {cells} cell(s).{detail_en}{where_en} '
+        'Processing stopped; no value was replaced or interpolated. Specify a different output NoData value and re-run.)')
+    error.detail=[dict(e) for e in entries] if entries else [
+        {'source':str(source),'role':'output','output_nodata':float(output_nodata),'count':int(cells)}]
+    return error
+
+
+def point_nodata_collision_error(hits):
+    """The bilingual stop for point inputs whose elevation equals a value that
+    cannot be a point elevation: the output NoData value (interpolation would
+    blend it into neighbouring cells and the result could no longer be told
+    from missing data) or the internal missing-value sentinel (a data cell
+    would be indistinguishable from an empty one).
+
+    ``hits`` is a non-empty list of dicts: source, value, role ('output' or
+    'internal') and count (points). The first hit is named in the message;
+    all hits are kept on ``error.detail`` (recorded in run.json on failure).
+    The message names the input, the colliding value and the point count,
+    and gives the remedy for both readings of the data."""
+    first=hits[0];source=first['source'];value=first['value'];cells=first['count']
+    more=''
+    if len(hits)>1:
+        more=f' ほか {len(hits)-1} 件の入力／値でも検出されています（詳細は run.json の failure_detail）。'
+    if first['role']=='internal':
+        ja=(f'入力点「{source}」に、内部で欠測の印として使う値（{value:g}）と一致する標高の点が {cells} 件あります。'
+            'この値は有効な標高として扱えないため、黙って欠測にせず処理を停止しました。'
+            f'この値が欠測を表すデータなら、元データの無効値（NODATA／source_nodata）に {value:g} を指定して再実行してください。')
+        en=(f'Input points in {source} have elevation {value:g} ({cells} point(s)), the value reserved as the '
+            'internal missing-value marker. Processing stopped instead of silently treating them as missing; '
+            f'if {value:g} marks missing data, specify it as the input NoData (NODATA / source_nodata) and re-run.')
+    else:
+        ja=(f'入力点「{source}」に、出力NoData値（{value:g}）と一致する標高の点が {cells} 件あります。'
+            '補間（IDW・平均・最低値のいずれでも）すると周辺セルの標高が汚染され、欠測とも区別できなくなるため、処理を停止しました。'
+            f'この値が欠測を表すデータなら、元データの無効値（NODATA／source_nodata）に {value:g} を指定し、'
+            '有効な標高なら別の出力NoData値を指定して、再実行してください。')
+        en=(f'Input points in {source} have elevation {value:g} ({cells} point(s)), equal to the output NoData value. '
+            'Interpolating them would contaminate neighbouring cells and make the result indistinguishable from '
+            f'missing data, so processing stopped. If {value:g} marks missing data, specify it as the input NoData '
+            '(NODATA / source_nodata); if it is a valid elevation, choose a different output NoData value and re-run.')
+    error=NoDataCollisionError(f'{ja}{more} ({en})')
+    error.detail=[dict(h) for h in hits]
+    return error
 
 
 def _invalid_raster_reason(path,exc):
@@ -549,6 +794,18 @@ def prepare_inputs(c,work,gdal,osr,feedback=None):
     reportpath=work/'input_report.json'
     def save():reportpath.write_text(json.dumps(report,ensure_ascii=False,indent=2),encoding='utf-8')
     save();outputs=[];ordinal=0
+    notes=[]
+    def fold_notes():
+        # Per-source NoData scan results from normalize(): non-finite
+        # cells materialized as missing, and valid cells colliding
+        # with the output NoData value. Folded into the report (and
+        # thus run.json) instead of vanishing with the work dir.
+        if notes:
+            report.setdefault('nodata_scan',[]).extend(notes)
+            for entry in notes:
+                if entry['nodata_collision_cells']:
+                    report.setdefault('nodata_value_collisions',[]).append(entry)
+            notes.clear()
     try:
         if c['input_type']=='lidar' or (c['input_type']=='text' and c['text_mode']=='points'):
             try:from .point_inputs import points_to_rasters
@@ -610,7 +867,7 @@ def prepare_inputs(c,work,gdal,osr,feedback=None):
                     raw=path;source={**c,'source_nodata':band_nodata if band_nodata is not None else c['forest_nodata']}
                     report['detected'].append({'path':str(path),'kind':'geotiff' if embedded else 'tiff_worldfile'})
                 aligned=work/f'aligned_{ordinal:06d}.tif'
-                outputs.append(normalize(raw,aligned,source,gdal,osr,feedback,kind=='raster'))
+                outputs.append(normalize(raw,aligned,source,gdal,osr,feedback,kind=='raster',notes=notes))
                 report['sources'].append({'path':str(path),'kind':kind});save()
             if len(report['ignored'])>20 and feedback is not None:
                 feedback.pushWarning(f"入力を無視: ほか {len(report['ignored'])-20} 件（詳細は input_report.json を参照）")
@@ -658,7 +915,7 @@ def prepare_inputs(c,work,gdal,osr,feedback=None):
                     else:report['sources'].append({'path':path})
                     if c['input_type']=='raster':
                         try:
-                            aligned=normalize(raw,work/f'aligned_{ordinal:06d}.tif',c,gdal,osr,feedback,True)
+                            aligned=normalize(raw,work/f'aligned_{ordinal:06d}.tif',c,gdal,osr,feedback,True,notes)
                         except (ValueError, RuntimeError) as exc:
                             reason=(f'入力ラスターを読み込めません: {path}。ファイルが破損していないか、TIFF等の対応形式か、'
                                     f'単一バンドの標高データかを確認してください。GDAL詳細: {exc}')
@@ -672,7 +929,7 @@ def prepare_inputs(c,work,gdal,osr,feedback=None):
                             continue
                         outputs.append(aligned)
                     else:
-                        outputs.append(normalize(raw,work/f'aligned_{ordinal:06d}.tif',c,gdal,osr,feedback,False))
+                        outputs.append(normalize(raw,work/f'aligned_{ordinal:06d}.tif',c,gdal,osr,feedback,False,notes))
                 save()
             if c['input_type']=='raster' and len(report['ignored'])>20 and feedback is not None:
                 feedback.pushWarning(f"入力を無視: ほか {len(report['ignored'])-20} 件（詳細は input_report.json を参照）")
@@ -680,7 +937,7 @@ def prepare_inputs(c,work,gdal,osr,feedback=None):
             if any('jgd2024' in d for d in gsi_datums) and any('jgd2011' in d or 'jgd2000' in d for d in gsi_datums):
                 raise ValueError('GSI old/new datum labels are mixed. Unify elevation realizations before merging.')
             if c['input_type']=='gsi' and outputs:
-                outputs=normalize_gsi_groups(outputs,work,c,gdal,osr,feedback)
+                outputs=normalize_gsi_groups(outputs,work,c,gdal,osr,feedback,notes)
         if any(isinstance(s,dict) and str(s.get('original_srs','')).lower() in
                ('fguuid:jgd2011.bl','fguuid:jgd2024.bl') for s in report['sources']):
             # r6: newer EPSG datasets label this horizontal CRS
@@ -703,7 +960,26 @@ def prepare_inputs(c,work,gdal,osr,feedback=None):
                 raise NoUsableInputError(f'使用可能なDEMが見つかりません（No usable DEMs found）: {len(ignored)} input(s) ignored; '
                                  f'first reasons: {first}')
             raise ValueError('使用可能なDEMが見つかりません（No usable DEMs found (XML may contain metadata only)）')
+        fold_notes()
+        collisions=report.get('nodata_value_collisions') or []
+        if collisions:
+            # Issue #8 independent audit (2026-11-11): warning-and-
+            # continue is not acceptable - a valid cell equal to the
+            # output NoData value would be re-read as missing in the
+            # deliverable. Stop here, after every source was scanned
+            # so the report names each colliding input; the except
+            # below records the run as failed in input_report.json.
+            total=sum(e['nodata_collision_cells'] for e in collisions)
+            entries=[{k:v for k,v in e.items() if k not in ('nonfinite_cells','nodata_collision_cells')} for e in collisions]
+            error=nodata_collision_error(collisions[0]['source'],output_nodata_of(c),total,entries)
+            if len(collisions)>1:
+                detail=error.detail
+                error=NoDataCollisionError(str(error)+
+                    f' ほか {len(collisions)-1} 件の入力でも衝突が検出されています（詳細は input_report.json の nodata_value_collisions と run.json の failure_detail）。')
+                error.detail=detail
+            raise error
         report.update(status='completed',prepared_rasters=outputs);save()
         return {**c,'inputs':outputs,'source_nodata':None},report
     except BaseException as exc:
+        fold_notes()
         report.update(status='cancelled' if feedback is not None and feedback.isCanceled() else 'failed',error=str(exc));save();raise
