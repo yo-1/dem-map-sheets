@@ -113,6 +113,7 @@ class DEMMapSheetsAlgorithm(QgsProcessingAlgorithm):
         from .engine.dem_pipeline import run
         from .engine.terrainrgb import write_terrainrgb_xyz
         from .engine.run_record import finalize_run_record
+        from .engine.provenance import add_output_file
         # GDAL exceptions are scoped inside engine run() (W-13); the
         # plugin must not flip the process-global setting for QGIS.
         mode=['raster','gsi','text','lidar','forest'][self.parameterAsEnum(parameters,'INPUT_TYPE',context)]
@@ -167,6 +168,8 @@ class DEMMapSheetsAlgorithm(QgsProcessingAlgorithm):
         grid_ref=self.parameterAsEnum(parameters,'FOREST_GRID_REF',context)
         if grid_ref in (1,2):
             c['forest_grid_coordinate_reference']=['center','upper_left'][grid_ref-1]
+        try:c['qgis_version']=Qgis.version()
+        except Exception:pass
         feedback.pushInfo(f'DEM Map Sheets v{VERSION}: 入力変換を開始します。')
         try:
             manifest=run(c,result_dir,gdal,osr,feedback)
@@ -178,6 +181,9 @@ class DEMMapSheetsAlgorithm(QgsProcessingAlgorithm):
                     self.parameterAsInt(parameters,'XYZ_LIMIT',context),gdal,osr,feedback,
                     nodata=manifest['output_nodata'])
                 manifest['terrainrgb_xyz']=info
+                # タイル本体は数が多いため xyz.json のみハッシュする（初版の制約）
+                xyz_meta=Path(xyz)/'xyz.json'
+                if xyz_meta.is_file():add_output_file(manifest,result_dir,xyz_meta,feedback.isCanceled)
                 (result_dir/'run.json').write_text(json.dumps(finalize_run_record(manifest),ensure_ascii=False,indent=2),encoding='utf-8')
             feedback.setProgress(100)
             return {'MERGED_DEM':manifest['merged_dem'],'SOURCE_DEMS':str(result_dir/'01_source_dem'),

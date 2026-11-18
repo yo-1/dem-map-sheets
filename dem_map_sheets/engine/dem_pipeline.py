@@ -10,6 +10,7 @@ import numpy as np
 from .input_sources import DEFAULTS as INPUT_DEFAULTS, DEFAULT_OUTPUT_NODATA, NoDataCollisionError, add_collision_detail, collision_cells, collision_entry, NoUsableInputError, _invalid_raster_reason, crs_of, discover, nodata_collision_error, output_nodata_of, prepare_inputs, proj_epsg_version, validate_input
 from .map_sheets import intersecting_sheets, dimensions
 from .run_record import finalize_run_record
+from .provenance import build_failure_provenance, build_success_provenance
 
 
 def _has_valid_cells(path,gdal):
@@ -138,7 +139,7 @@ def prune_work_after_failure(work,keep_suffixes=('.log','.stderr','.stdout','.js
     return removed,retained
 
 
-def _record_failure(out,work,config,exc,feedback):
+def _record_failure(out,work,config,exc,feedback,inputs=None,gdal=None,osr=None):
     """Prune the failed run's work directory (unless keep_work) and
     record the failure in run.json. Never raises."""
     try:
@@ -181,6 +182,8 @@ def _record_failure(out,work,config,exc,feedback):
         # record does not depend on parsing the message text.
         detail=getattr(exc,'detail',None)
         if detail is not None:record['failure_detail']=detail
+        try:record['provenance']=build_failure_provenance(config,out,inputs,gdal,osr)
+        except Exception:pass  # 来歴の失敗で失敗記録そのものを損なわない
         (Path(out)/'run.json').write_text(json.dumps(finalize_run_record(record),ensure_ascii=False,indent=2),encoding='utf-8')
     except Exception as record_exc:
         # Recording must never mask the original error; leave a
@@ -616,8 +619,12 @@ def _run(config,output_dir,gdal,osr,feedback=None):
             'source_datum_label':datum_labels[0] if len(datum_labels)==1 else (datum_labels or None),
             'proj_epsg_version':proj_epsg_version(osr),
             'work_retained':'all' if config.get('keep_work') else 'none'}
+        # 成功時のみ SHA-256 を計算（失敗経路は計算しない）。キャンセルは尊重する。
+        manifest['provenance']=build_success_provenance(config,out,c['inputs'],gdal,osr,report,
+            (feedback.isCanceled if feedback is not None else None))
+        if manifest['provenance']['status']=='incomplete':output_warnings.append('provenance_incomplete')
     except BaseException as exc:
-        _record_failure(out,work,config,exc,feedback)
+        _record_failure(out,work,config,exc,feedback,c.get('inputs'),gdal,osr)
         raise
     (out/'run.json').write_text(json.dumps(finalize_run_record(manifest),ensure_ascii=False,indent=2),encoding='utf-8')
     if not config.get('keep_work',False):shutil.rmtree(work,ignore_errors=True)
