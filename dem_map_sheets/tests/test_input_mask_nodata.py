@@ -198,5 +198,47 @@ class FalsePositiveGuardTests(InputMaskNoDataCase):
         np.testing.assert_array_equal(array[5, 2:9], np.array(SEVEN, dtype='float32'))
 
 
+class MixedRoleTests(InputMaskNoDataCase):
+    """Both collision kinds in one run (ChatGPT review of PR #27):
+    the headline error describes the first entry's kind, so its cell
+    count must be that kind's subtotal - never the sum of both kinds -
+    and the other kind must be named with its own count. The per-entry
+    failure_detail records stay exact either way."""
+
+    def _mixed(self, order):
+        # A: declared -999999, a value near the OUTPUT -9999 -> role 'output', 1 cell
+        a = self.tif([-9999.002], nodata=-999999.0, name='a.tif')
+        # B: declared -32768, values near its OWN declaration, far from the
+        # output -9999 -> role 'input_declared', 2 cells
+        b = self.tif([-32768.002, -32767.996], nodata=-32768.0, name='b.tif')
+        return [a, b] if order == 'ab' else [b, a]
+
+    def test_output_first_reports_each_kind_with_its_own_count(self):
+        _e, record = self.expect_stop(self._mixed('ab'))  # default output -9999
+        detail = record['failure_detail']
+        self.assertEqual(len(detail), 2)
+        by_role = {e['role']: e for e in detail}
+        self.assertEqual(by_role['output']['count'], 1)
+        self.assertEqual(by_role['input_declared']['count'], 2)
+        self.assertEqual(by_role['input_declared']['declared_nodata'], -32768.0)
+        # headline: 1 cell charged to the output kind, not 3
+        self.assertIn('に 1 件あります', record['error'])
+        self.assertNotIn('に 3 件あります', record['error'])
+        # the other kind is named with its own subtotal
+        self.assertIn('宣言NoData近傍の衝突も 2 件', record['error'])
+
+    def test_input_declared_first_reports_each_kind_with_its_own_count(self):
+        _e, record = self.expect_stop(self._mixed('ba'))
+        detail = record['failure_detail']
+        self.assertEqual(len(detail), 2)
+        by_role = {e['role']: e for e in detail}
+        self.assertEqual(by_role['output']['count'], 1)
+        self.assertEqual(by_role['input_declared']['count'], 2)
+        # headline: 2 cells charged to the input-declared kind, not 3
+        self.assertIn('標高セルが 2 件あります', record['error'])
+        self.assertNotIn('標高セルが 3 件あります', record['error'])
+        self.assertIn('出力NoData値との衝突も 1 件', record['error'])
+
+
 if __name__ == '__main__':
     unittest.main()

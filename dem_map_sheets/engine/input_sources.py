@@ -1060,16 +1060,31 @@ def prepare_inputs(c,work,gdal,osr,feedback=None):
             # deliverable. Stop here, after every source was scanned
             # so the report names each colliding input; the except
             # below records the run as failed in input_report.json.
-            total=sum(e['nodata_collision_cells'] for e in collisions)
             entries=[{k:v for k,v in e.items() if k not in ('nonfinite_cells','nodata_collision_cells')} for e in collisions]
-            if collisions[0].get('role')=='input_declared':
-                error=input_mask_collision_error(collisions[0]['source'],collisions[0]['declared_nodata'],total,entries)
+            # The headline message describes the first entry's kind, so it
+            # carries only that kind's subtotal: charging the other kind's
+            # cells to it would misstate both the count and the remedy
+            # (PR #27 review). The other kind, when present, is named
+            # with its own subtotal; every entry stays in failure_detail.
+            first=collisions[0];first_role=first.get('role') or 'output'
+            own_total=sum(e['nodata_collision_cells'] for e in collisions
+                          if (e.get('role') or 'output')==first_role)
+            other=[e for e in collisions if (e.get('role') or 'output')!=first_role]
+            if first_role=='input_declared':
+                error=input_mask_collision_error(first['source'],first['declared_nodata'],own_total,entries)
             else:
-                error=nodata_collision_error(collisions[0]['source'],output_nodata_of(c),total,entries)
+                error=nodata_collision_error(first['source'],output_nodata_of(c),own_total,entries)
             if len(collisions)>1:
                 detail=error.detail
-                error=NoDataCollisionError(str(error)+
-                    f' ほか {len(collisions)-1} 件の入力でも衝突が検出されています（詳細は input_report.json の nodata_value_collisions と run.json の failure_detail）。')
+                extra=(f' ほか {len(collisions)-1} 件の入力でも衝突が検出されています'
+                       '（詳細は input_report.json の nodata_value_collisions と run.json の failure_detail）。')
+                if other:
+                    other_total=sum(e['nodata_collision_cells'] for e in other)
+                    if first_role=='input_declared':
+                        extra+=f' なお、出力NoData値との衝突も {other_total} 件あります（詳細は同じ failure_detail）。'
+                    else:
+                        extra+=f' なお、入力の宣言NoData近傍の衝突も {other_total} 件あります（詳細は同じ failure_detail）。'
+                error=NoDataCollisionError(str(error)+extra)
                 error.detail=detail
             raise error
         report.update(status='completed',prepared_rasters=outputs);save()
