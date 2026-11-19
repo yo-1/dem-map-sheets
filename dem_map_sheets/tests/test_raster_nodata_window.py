@@ -188,6 +188,11 @@ class WindowsReportReproductionTests(RasterNearNoDataCase):
         self.assertEqual({Path(e['source']).name: e['count'] for e in record['failure_detail']},
                          {'a.tif': 1, 'b.tif': 2})
         self.assertIn('ほか 1 件', record['error'])
+        # the headline names a.tif, so it carries a.tif's own 1 cell;
+        # 3 appears only as the labelled cross-file subtotal
+        self.assertIn('に 1 件あります', record['error'])
+        self.assertNotIn('に 3 件あります', record['error'])
+        self.assertIn('小計は全入力で 3 件', record['error'])
 
     def test_negative_positive_zero_and_small_nodata_values(self):
         cases = [(9999.0, [9999.002, 10000.0]), (0.0, [0.0]), (-1.0, [-1.0000004, -0.5]),

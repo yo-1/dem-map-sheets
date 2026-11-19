@@ -2,6 +2,7 @@
 
 ## 次期版（開発中・版番号未定）
 
+- 入力ラスタ自身の宣言NoData値の**近傍**にある有効な標高セルも検出して停止するよう修正（PR #26 の後続、Windows実機の原因調査で確定）。入力が -9999 を宣言し出力NoDataが -32768 の場合、GDAL は宣言値の近傍（約 ±4 float32 ステップ）の有効値 -9999.0005／-9999.002／-9999.004／-9998.996 を入力の読み取り時点で欠測として扱い、normalize の Warp で出力NoDataへ置き換えてしまうため、処理は completed のまま4セルが無通知で失われていた。変換前に、入力の GDAL マスクが宣言NoData由来のみ（GMF_NODATA）の場合に限り、マスク無効かつ宣言値と完全一致しない有限セルを検出し、対象入力・宣言値・該当値・位置・件数を `run.json` の `failure_detail`（role: `input_declared`）に記録して停止する。明示マスクバンド・アルファバンド・外部 .msk を併用する入力は、マスク無効の理由を宣言値に帰属できないため本検査の対象外（仕様上の限界として明記）。NaN セルは従来どおり非有限値として欠測化され本検査の対象外。宣言値と完全一致するセルは入力自身の欠測として従来どおり処理する。`source_nodata` に宣言値と異なる値を指定した場合は Warp の欠測定義がそちらになるため本検査は働かず、値は保持される。
 - run.json に `provenance`（入力・出力の SHA-256 とサイズ、取得できた環境版 QGIS/GDAL/PROJ/PDAL/プラグイン/numpy/Python）を追加（Issue #16 PR-3）。成功時のみ計算し、ハッシュ失敗は run を失敗にせず `incomplete` と記録、失敗・中断時は未計算（`partial`）。パスと秘密情報は記録しない。`record_hashes=false` で省略可。
 - run.json に `schema_version`（現在 1）と `qa_status`（常に `not_evaluated`。納品合否の自動判定はしない）を追加し、仕様を `RUN_JSON.md`／`schema/run.schema.json` に文書化（Issue #16 PR-2）。既存キー・`status`（completed/failed/cancelled）・出力値は変更なし。
 - 出力DEMのNoData値を設定可能にした（設定キー `output_nodata`／パラメータ `OUTPUT_NODATA`、既定 -9999）。従来の固定値 -999999 は内部中間生成物の番兵としてのみ残る。run.json の `output_nodata` には実効値を記録する。
