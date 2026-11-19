@@ -1067,17 +1067,26 @@ def prepare_inputs(c,work,gdal,osr,feedback=None):
             # (PR #27 review). The other kind, when present, is named
             # with its own subtotal; every entry stays in failure_detail.
             first=collisions[0];first_role=first.get('role') or 'output'
-            own_total=sum(e['nodata_collision_cells'] for e in collisions
-                          if (e.get('role') or 'output')==first_role)
+            # The headline names the first entry's file, so its count is
+            # that file's own cell count - never a multi-file subtotal
+            # (PR #27 wording review: 'Bに6件' read as B alone holding 6
+            # when B held 2 and the role subtotal was 6). A same-kind
+            # subtotal across files is stated separately, as a subtotal.
+            first_count=first['nodata_collision_cells']
+            own=[e for e in collisions if (e.get('role') or 'output')==first_role]
+            own_total=sum(e['nodata_collision_cells'] for e in own)
             other=[e for e in collisions if (e.get('role') or 'output')!=first_role]
             if first_role=='input_declared':
-                error=input_mask_collision_error(first['source'],first['declared_nodata'],own_total,entries)
+                error=input_mask_collision_error(first['source'],first['declared_nodata'],first_count,entries)
             else:
-                error=nodata_collision_error(first['source'],output_nodata_of(c),own_total,entries)
+                error=nodata_collision_error(first['source'],output_nodata_of(c),first_count,entries)
             if len(collisions)>1:
                 detail=error.detail
                 extra=(f' ほか {len(collisions)-1} 件の入力でも衝突が検出されています'
                        '（詳細は input_report.json の nodata_value_collisions と run.json の failure_detail）。')
+                if len(own)>1:
+                    extra+=(f' なお、見出しと同種の衝突の小計は全入力で {own_total} 件です'
+                            '（見出しの件数は先頭の入力ファイル分のみ）。')
                 if other:
                     other_total=sum(e['nodata_collision_cells'] for e in other)
                     if first_role=='input_declared':

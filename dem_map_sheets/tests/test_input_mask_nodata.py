@@ -227,6 +227,32 @@ class MixedRoleTests(InputMaskNoDataCase):
         # the other kind is named with its own subtotal
         self.assertIn('宣言NoData近傍の衝突も 2 件', record['error'])
 
+    def test_same_kind_across_files_headline_is_first_file_only(self):
+        # The verification case behind the wording fix: first file B holds
+        # 2 cells, a second file C holds 4 more of the SAME kind. The
+        # headline must read as B's own 2, with 6 stated only as the
+        # cross-file subtotal - never as 'Bに6件'.
+        b = self.tif([-32768.002, -32767.996], nodata=-32768.0, name='b.tif')
+        c = self.tif([-32768.004, -32768.008, -32767.996, -32767.992],
+                     nodata=-32768.0, name='c.tif')
+        _e, record = self.expect_stop([b, c])
+        detail = record['failure_detail']
+        self.assertEqual([e['count'] for e in detail], [2, 4])
+        self.assertIn('標高セルが 2 件あります', record['error'])
+        self.assertNotIn('標高セルが 6 件あります', record['error'])
+        self.assertIn('小計は全入力で 6 件', record['error'])
+
+    def test_same_kind_across_files_reversed_order(self):
+        b = self.tif([-32768.002, -32767.996], nodata=-32768.0, name='b.tif')
+        c = self.tif([-32768.004, -32768.008, -32767.996, -32767.992],
+                     nodata=-32768.0, name='c.tif')
+        _e, record = self.expect_stop([c, b])
+        detail = record['failure_detail']
+        self.assertEqual([e['count'] for e in detail], [4, 2])
+        self.assertIn('標高セルが 4 件あります', record['error'])
+        self.assertNotIn('標高セルが 6 件あります', record['error'])
+        self.assertIn('小計は全入力で 6 件', record['error'])
+
     def test_input_declared_first_reports_each_kind_with_its_own_count(self):
         _e, record = self.expect_stop(self._mixed('ba'))
         detail = record['failure_detail']
