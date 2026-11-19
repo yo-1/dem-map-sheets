@@ -1,0 +1,112 @@
+{
+  "status": "failed",
+  "error": "入力「SYNTHETIC_FIXTURE_ROOT/input_1.tif」の有効範囲マスクを安全に保持できないため処理を停止しました。有効標高の消失候補 4 件。無効セルの復活リスク候補 1 件（潜在的な件数で、実際の復活件数ではありません）。詳細は run.json の failure_detail を確認し、マスクを考慮した前処理を行ってください。元ファイルの.msk削除、標高値の丸め・補間、出力NoData変更だけによる回避は行わないでください。 (Explicit input mask safety stop; no automatic data correction.)",
+  "merge_priority": "last",
+  "work_dir": "SYNTHETIC_FIXTURE_ROOT/run_2/work",
+  "work_retained": "diagnostics_only",
+  "work_removed_bytes": 0,
+  "work_retained_bytes": 846,
+  "outputs_present": [],
+  "failure_detail": [
+    {
+      "source": "SYNTHETIC_FIXTURE_ROOT/input_1.tif",
+      "stage": "normalize_preflight",
+      "role": "input_mask",
+      "reason": "valid_near_effective_nodata",
+      "band": 1,
+      "mask_flags": 2,
+      "declared_nodata": -9999.0,
+      "effective_source_nodata": -9999.0,
+      "effective_source_nodata_origin": "band",
+      "gdal_version": "3.10.3",
+      "count": 4,
+      "count_kind": "detected_candidates",
+      "values": [
+        -9999.00390625,
+        -9999.001953125,
+        -9999.0009765625,
+        -9998.99609375
+      ],
+      "positions": [
+        {
+          "row": 5,
+          "col": 2,
+          "value": -9999.0009765625,
+          "x": 1002.5,
+          "y": 2014.5
+        },
+        {
+          "row": 5,
+          "col": 3,
+          "value": -9999.001953125,
+          "x": 1003.5,
+          "y": 2014.5
+        },
+        {
+          "row": 5,
+          "col": 4,
+          "value": -9999.00390625,
+          "x": 1004.5,
+          "y": 2014.5
+        },
+        {
+          "row": 5,
+          "col": 8,
+          "value": -9998.99609375,
+          "x": 1008.5,
+          "y": 2014.5
+        }
+      ]
+    },
+    {
+      "source": "SYNTHETIC_FIXTURE_ROOT/input_1.tif",
+      "stage": "normalize_preflight",
+      "role": "input_mask",
+      "reason": "explicit_invalid_may_become_valid",
+      "band": 1,
+      "mask_flags": 2,
+      "declared_nodata": -9999.0,
+      "effective_source_nodata": -9999.0,
+      "effective_source_nodata_origin": "band",
+      "gdal_version": "3.10.3",
+      "count": 1,
+      "count_kind": "potential",
+      "values": [
+        100.0
+      ],
+      "positions": [
+        {
+          "row": 0,
+          "col": 0,
+          "value": 100.0,
+          "x": 1000.5,
+          "y": 2019.5
+        }
+      ]
+    }
+  ],
+  "mask_safety_stop": true,
+  "provenance": {
+    "status": "partial",
+    "hash_algorithm": "sha256",
+    "inputs": [
+      {
+        "index": 0,
+        "name": "input_1.tif",
+        "bytes": 2546,
+        "sha256": null,
+        "sha256_status": "not_computed"
+      }
+    ],
+    "outputs_note": "see outputs_present",
+    "environment": {
+      "python": "3.13.5",
+      "plugin": "0.2.1",
+      "gdal": "3.10.3",
+      "proj": "9.6.0",
+      "numpy": "2.2.4"
+    }
+  },
+  "schema_version": 1,
+  "qa_status": "not_evaluated"
+}

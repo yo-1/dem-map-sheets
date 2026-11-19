@@ -28,6 +28,31 @@ work_retained_bytes, outputs_present`。
 - 既存キー・値は変更しない。追加のみ。読み手は未知キーを無視すること。
 - `schema_version` を上げるのは既存キーの意味・型を変える場合のみ。
 
+## 明示mask安全停止（Issue #29 A案）
+
+`MaskSemanticsConflictError`は`status=failed`、`qa_status=not_evaluated`、`schema_version=1`を維持し、
+`mask_safety_stop=true`と`failure_detail[]`を追加する。既存schemaの`failure_detail`は拡張可能なため、schema版・旧roleの意味は変更しない。
+
+| キー | 内容 |
+|---|---|
+| `role` | `input_mask`（既存の`output`/`input_declared`と区別） |
+| `reason` | `valid_near_effective_nodata`、`explicit_invalid_may_become_valid`、または比較不能・読取異常の理由 |
+| `stage` | `normalize_preflight` / `passthrough_preflight` / `materialize_preflight` |
+| `band, mask_flags` | 検査したバンド番号とGDAL mask flag。取得不能時のflagはnull |
+| `effective_source_nodata, effective_source_nodata_origin` | 実際にその経路で適用する欠測値と由来（band/override/forest_default） |
+| `declared_nodata` | 元バンドのNoData。非有限値はnull、別の`*_repr`文字列で表す |
+| `count, count_kind` | 消失候補は`detected_candidates`、復活リスク候補は`potential`。未評価は0/`not_evaluated` |
+| `values, positions` | 値のサンプル最大16種、位置サンプル最大5件（0始まりrow/colとセル中心座標）。countはサンプル数ではなく総数 |
+| `gdal_version` | 検査時のGDAL版 |
+
+検査は512×512以下の窓で行う。数値専用VRTの生値と原バンドが一致することも検証する。
+出力側衝突として扱うセルを重複して`input_mask`に数えない。
+新maskエラーは最初の危険入力で即時停止するため、全入力の走査完了や全種別の集約を保証しない。
+`SKIP_INVALID=true`でも握り潰さない。原入力は変更しない。
+この安全停止に限りKEEP_WORKにかかわらず作業領域を診断情報へ整理し、生成済みの入力別DEM等も削除する。
+削除失敗時はfailedのままログを出し、残った出力は`outputs_present`へ記録する。
+実測の記録例は`validation/issue29_failure_example.json`（一時パスだけを置換）を参照。
+
 ## provenance（来歴。Issue #16 PR-3）
 `provenance` は completed では必須、failed/cancelled では任意（最小形の補正経路では無い場合がある）。
 

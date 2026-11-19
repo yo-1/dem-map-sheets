@@ -1,0 +1,30 @@
+[
+  {
+    "case": "internal",
+    "baseline": "e791d47",
+    "status": "completed",
+    "valid_count": 396,
+    "original_mask_zero_revived": false
+  },
+  {
+    "case": "external",
+    "baseline": "e791d47",
+    "status": "completed",
+    "valid_count": 396,
+    "original_mask_zero_revived": false
+  },
+  {
+    "case": "internal_zero",
+    "baseline": "e791d47",
+    "status": "completed",
+    "valid_count": 396,
+    "original_mask_zero_revived": true
+  },
+  {
+    "case": "external_zero",
+    "baseline": "e791d47",
+    "status": "completed",
+    "valid_count": 396,
+    "original_mask_zero_revived": true
+  }
+]

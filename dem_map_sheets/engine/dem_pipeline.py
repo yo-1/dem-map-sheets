@@ -11,6 +11,7 @@ from .input_sources import DEFAULTS as INPUT_DEFAULTS, DEFAULT_OUTPUT_NODATA, No
 from .map_sheets import intersecting_sheets, dimensions
 from .run_record import finalize_run_record
 from .provenance import build_failure_provenance, build_success_provenance
+from .mask_guard import MaskSemanticsConflictError, inspect_explicit_mask
 
 
 def _has_valid_cells(path,gdal):
@@ -52,6 +53,11 @@ def materialize_geotiff(source,dest,gdal,output_nodata=DEFAULT_OUTPUT_NODATA,not
         src=gdal.Open(str(source))
         if src is not None:
             src_nodatas=[src.GetRasterBand(i+1).GetNoDataValue() for i in range(src.RasterCount)]
+            for i,declared in enumerate(src_nodatas,1):
+                inspect_explicit_mask(src,source,declared,'band',gdal,
+                                     'materialize_preflight',band_index=i,output_nodata=output_nodata)
+    except MaskSemanticsConflictError:
+        raise
     except Exception:
         src_nodatas=None
     src=None
@@ -143,7 +149,19 @@ def _record_failure(out,work,config,exc,feedback,inputs=None,gdal=None,osr=None)
     """Prune the failed run's work directory (unless keep_work) and
     record the failure in run.json. Never raises."""
     try:
-        keep=bool(config.get('keep_work',False))
+        mask_stop=isinstance(exc,MaskSemanticsConflictError)
+        keep=bool(config.get('keep_work',False)) and not mask_stop
+        if mask_stop:
+            # This run directory was created exclusively by run(). Never
+            # retain earlier sources' DEMs as apparently successful products
+            # after a mask integrity stop, including auto-priority runs.
+            for name in ('01_source_dem','02_merged_sheets','02_merged_dem.tif'):
+                path=Path(out)/name
+                try:
+                    if path.is_dir():shutil.rmtree(path)
+                    else:path.unlink(missing_ok=True)
+                except OSError as cleanup_exc:
+                    print(f'安全停止後の未完成DEM削除に失敗しました: {path}: {cleanup_exc}',file=sys.stderr)
         removed=None;retained=None
         if keep:
             retained_mode='all'
@@ -182,6 +200,7 @@ def _record_failure(out,work,config,exc,feedback,inputs=None,gdal=None,osr=None)
         # record does not depend on parsing the message text.
         detail=getattr(exc,'detail',None)
         if detail is not None:record['failure_detail']=detail
+        if mask_stop:record['mask_safety_stop']=True
         try:record['provenance']=build_failure_provenance(config,out,inputs,gdal,osr)
         except Exception:pass  # 来歴の失敗で失敗記録そのものを損なわない
         (Path(out)/'run.json').write_text(json.dumps(finalize_run_record(record),ensure_ascii=False,indent=2),encoding='utf-8')
