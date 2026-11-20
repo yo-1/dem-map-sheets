@@ -1,0 +1,42 @@
+name: QGIS integration tests (headless)
+
+on:
+  pull_request:
+    paths:
+      - 'dem_map_sheets/tests/**'
+      - 'dem_map_sheets/algorithm.py'
+      - '.github/workflows/qgis-integration.yml'
+  workflow_dispatch:
+
+jobs:
+  qgis-standalone:
+    runs-on: ubuntu-24.04
+    env:
+      QT_QPA_PLATFORM: offscreen
+      PYTHONPATH: ${{ github.workspace }}
+    steps:
+      - uses: actions/checkout@v4
+      - name: Install Ubuntu QGIS Python bindings
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y python3-qgis python3-gdal python3-numpy python3-pyqt5
+      - name: Record environment and run real QGIS-dependent tests (no skips)
+        run: |
+          /usr/bin/python3 - <<'PY'
+          import sys
+          import unittest
+          from osgeo import gdal
+          from qgis.core import Qgis
+          print('Execution: separate QGIS Python process (not QGIS Desktop)', flush=True)
+          print('QGIS:', Qgis.QGIS_VERSION, flush=True)
+          print('GDAL:', gdal.VersionInfo('--version'), flush=True)
+          print('Python:', sys.version, flush=True)
+          suite = unittest.defaultTestLoader.discover(
+              'dem_map_sheets/tests', pattern='test_algorithm_failure_record.py')
+          result = unittest.TextTestRunner(verbosity=2).run(suite)
+          print('result: tests=%d failures=%d errors=%d skipped=%d' % (
+              result.testsRun, len(result.failures), len(result.errors),
+              len(result.skipped)), flush=True)
+          if result.testsRun != 3 or result.failures or result.errors or result.skipped:
+              sys.exit(1)
+          PY
