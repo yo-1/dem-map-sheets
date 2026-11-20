@@ -6,6 +6,7 @@ exited QgsApplication may remain visible to instance(), but is unusable.
 from contextlib import contextmanager
 
 _owned_app = None
+_init_failed = False
 
 
 @contextmanager
@@ -15,7 +16,12 @@ def qgis_test_application():
     This intentionally never calls exitQgis. Running another suite in the
     same process must not encounter a stale, exited singleton.
     """
-    global _owned_app
+    global _owned_app, _init_failed
+    if _init_failed:
+        raise RuntimeError(
+            "QGIS initialization previously failed in this process; "
+            "restart the QGIS Python process"
+        )
     from qgis.core import QgsApplication
 
     existing = QgsApplication.instance()
@@ -34,5 +40,9 @@ def qgis_test_application():
         # Keep a strong reference even if initQgis raises; do not mistake
         # a partially initialized singleton for an externally owned app.
         _owned_app = app
-        app.initQgis()
+        try:
+            app.initQgis()
+        except BaseException:
+            _init_failed = True
+            raise
     yield app
