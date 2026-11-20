@@ -16,27 +16,49 @@ jobs:
       PYTHONPATH: ${{ github.workspace }}
     steps:
       - uses: actions/checkout@v4
-      - name: Install Ubuntu QGIS Python bindings
+      - name: Install QGIS 3.44 with conda-forge
+        uses: mamba-org/setup-micromamba@v2
+        with:
+          environment-name: qgis-test
+          create-args: >-
+            python=3.12
+            qgis=3.44.*
+          init-shell: bash
+          cache-environment: true
+      - name: Verify QGIS and CRS, then run suite twice in one process
+        shell: bash -el {0}
         run: |
-          sudo apt-get update
-          sudo apt-get install -y python3-qgis python3-gdal python3-numpy python3-pyqt5
-      - name: Record environment and run real QGIS-dependent tests (no skips)
-        run: |
-          /usr/bin/python3 - <<'PY'
+          python - <<'PY'
+          import os
+          import subprocess
+          import sys
+          script = r"""
           import sys
           import unittest
           from osgeo import gdal
-          from qgis.core import Qgis
-          print('Execution: separate QGIS Python process (not QGIS Desktop)', flush=True)
+          from qgis.core import Qgis, QgsApplication, QgsCoordinateReferenceSystem
           print('QGIS:', Qgis.QGIS_VERSION, flush=True)
           print('GDAL:', gdal.VersionInfo('--version'), flush=True)
           print('Python:', sys.version, flush=True)
-          suite = unittest.defaultTestLoader.discover(
-              'dem_map_sheets/tests', pattern='test_algorithm_failure_record.py')
-          result = unittest.TextTestRunner(verbosity=2).run(suite)
-          print('result: tests=%d failures=%d errors=%d skipped=%d' % (
-              result.testsRun, len(result.failures), len(result.errors),
-              len(result.skipped)), flush=True)
-          if result.testsRun != 3 or result.failures or result.errors or result.skipped:
-              sys.exit(1)
+          assert Qgis.QGIS_VERSION.startswith('3.44.'), 'QGIS 3.44 is required'
+          for iteration in (1, 2):
+              suite = unittest.defaultTestLoader.discover(
+                  'dem_map_sheets/tests', pattern='test_algorithm_failure_record.py')
+              result = unittest.TextTestRunner(verbosity=2).run(suite)
+              print('iteration=%d tests=%d failures=%d errors=%d skipped=%d' % (
+                  iteration, result.testsRun, len(result.failures),
+                  len(result.errors), len(result.skipped)), flush=True)
+              if result.testsRun != 3 or result.failures or result.errors or result.skipped:
+                  sys.exit(1)
+              if not QgsCoordinateReferenceSystem('EPSG:6677').isValid():
+                  raise RuntimeError('EPSG:6677 could not be resolved')
+          """
+          env = dict(os.environ)
+          env['QT_QPA_PLATFORM'] = 'offscreen'
+          proc = subprocess.run([sys.executable, '-c', script], env=env,
+                                text=True, stdout=subprocess.PIPE,
+                                stderr=subprocess.STDOUT, timeout=180)
+          print(proc.stdout, flush=True)
+          if proc.returncode != 0:
+              raise SystemExit('QGIS subprocess failed or crashed: %d' % proc.returncode)
           PY
