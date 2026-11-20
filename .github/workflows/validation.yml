@@ -7,6 +7,16 @@ on:
 permissions:
   contents: read
 jobs:
+  qgis-lifecycle:
+    runs-on: ubuntu-24.04
+    steps:
+      - uses: actions/checkout@v7
+        with:
+          persist-credentials: false
+      - run: python3 validation/check_qgis_initialization.py
+      - run: python3 -m unittest dem_map_sheets.tests.test_qgis_runtime -v
+      - run: sudo apt-get update && sudo apt-get install -y python3-qgis
+      - run: QT_QPA_PLATFORM=offscreen /usr/bin/python3 -m unittest dem_map_sheets.tests.test_algorithm_failure_record -v
   synthetic:
     runs-on: ubuntu-24.04
     steps:

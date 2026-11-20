@@ -17,15 +17,16 @@ from unittest import mock
 
 try:
     from qgis.core import (
-        QgsApplication, QgsProcessingContext, QgsProcessingException,
+        QgsProcessingContext, QgsProcessingException,
         QgsProcessingFeedback)
     _HAS_QGIS = True
 except Exception:
     _HAS_QGIS = False
 
-if _HAS_QGIS:
-    _APP = QgsApplication([], False)
-    _APP.initQgis()
+try:
+    from .qgis_runtime import acquire
+except ImportError:  # unittest discover -s dem_map_sheets/tests
+    from qgis_runtime import acquire
 
 
 def _algorithm_and_params(parent, files, input_type=2):
@@ -68,6 +69,11 @@ def _algorithm_and_params(parent, files, input_type=2):
 
 @unittest.skipUnless(_HAS_QGIS, 'QGIS is not available in this environment')
 class AlgorithmFailureRecordTests(unittest.TestCase):
+    @classmethod
+    def setUpClass(cls):
+        cls.runtime = acquire()
+        cls.addClassCleanup(cls.runtime.close)
+
     def _run_expecting_failure(self, algo, params):
         context = QgsProcessingContext()
         feedback = QgsProcessingFeedback()
