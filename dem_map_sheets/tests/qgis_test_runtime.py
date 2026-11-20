@@ -1,23 +1,38 @@
-"""QGIS test runtime lifecycle; never initialize QGIS during module import."""
+"""QGIS test runtime lifecycle: one initialization per standalone process.
+
+Do not shut down a QGIS singleton between test suites: in QGIS 3.44 an
+exited QgsApplication may remain visible to instance(), but is unusable.
+"""
 from contextlib import contextmanager
+
+_owned_app = None
 
 
 @contextmanager
 def qgis_test_application():
-    """Yield a usable QGIS application, owning only standalone instances.
+    """Reuse Desktop QGIS, or keep a standalone QGIS app alive until process exit.
 
-    A running QGIS Desktop already owns its application. In that case, do
-    not call initQgis or exitQgis. The caller must import qgis.core first.
+    This intentionally never calls exitQgis. Running another suite in the
+    same process must not encounter a stale, exited singleton.
     """
+    global _owned_app
     from qgis.core import QgsApplication
 
     existing = QgsApplication.instance()
-    owned = existing is None
-    app = QgsApplication([], False) if owned else existing
-    if owned:
+    if _owned_app is not None:
+        if existing is not _owned_app:
+            raise RuntimeError(
+                "QGIS application singleton changed during this test process; "
+                "run the next suite in a fresh QGIS Python process"
+            )
+        app = _owned_app
+    elif existing is not None:
+        # A pre-existing QGIS Desktop application is owned by the host.
+        app = existing
+    else:
+        app = QgsApplication([], False)
+        # Keep a strong reference even if initQgis raises; do not mistake
+        # a partially initialized singleton for an externally owned app.
+        _owned_app = app
         app.initQgis()
-    try:
-        yield app
-    finally:
-        if owned:
-            app.exitQgis()
+    yield app
