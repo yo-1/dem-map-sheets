@@ -339,6 +339,9 @@ class ExplicitMaskTests(unittest.TestCase):
                     inspect_explicit_mask(source, path, -9999., 'band', gdal, 'test', feedback)
             self.assertNotIsInstance(error.exception, MaskSemanticsConflictError)
         finally:
+            # assertRaises strips the outer traceback, but chained cancellation
+            # exceptions may still own frames containing the source Dataset.
+            error = None
             source = None
             gc.collect()
 
