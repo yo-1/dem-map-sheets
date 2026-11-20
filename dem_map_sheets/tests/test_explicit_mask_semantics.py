@@ -1,5 +1,6 @@
 """Issue #29 A: real-GDAL loss/revival protection, not a conversion repair."""
 import hashlib
+import gc
 import importlib.util
 import json
 from pathlib import Path
@@ -252,9 +253,18 @@ class ExplicitMaskTests(unittest.TestCase):
 
     def test_unverifiable_numeric_vrt_is_a_structured_stop(self):
         path = self.tif(values=[])
-        with patch.object(gdal, 'Translate', return_value=None):
-            record = self.stopped([path], skip_invalid_rasters=True)
-        self.assertEqual(record['failure_detail'][0]['reason'], 'numeric_mask_unverifiable')
+        try:
+            with patch.object(gdal, 'Translate', return_value=None) as translate:
+                try:
+                    record = self.stopped([path], skip_invalid_rasters=True)
+                finally:
+                    # Mock call arguments own the source Dataset as well.
+                    translate.reset_mock()
+            self.assertEqual(record['failure_detail'][0]['reason'], 'numeric_mask_unverifiable')
+        finally:
+            # Guard diagnostic closures/exception frames can form cycles that
+            # retain GDAL handles until collection. Windows cannot unlink them.
+            gc.collect()
 
     def test_probe_value_change_is_not_trusted(self):
         path = self.tif(values=[])
@@ -323,10 +333,14 @@ class ExplicitMaskTests(unittest.TestCase):
             feedback.stopped = True
             return result
         source = gdal.Open(str(path))
-        with patch.object(gdal.Band, 'ReadAsArray', cancel):
-            with self.assertRaises(RuntimeError) as error:
-                inspect_explicit_mask(source, path, -9999., 'band', gdal, 'test', feedback)
-        self.assertNotIsInstance(error.exception, MaskSemanticsConflictError)
+        try:
+            with patch.object(gdal.Band, 'ReadAsArray', cancel):
+                with self.assertRaises(RuntimeError) as error:
+                    inspect_explicit_mask(source, path, -9999., 'band', gdal, 'test', feedback)
+            self.assertNotIsInstance(error.exception, MaskSemanticsConflictError)
+        finally:
+            source = None
+            gc.collect()
 
     def test_cleanup_failure_preserves_the_mask_stop_and_records_leftovers(self):
         from dem_map_sheets.engine import dem_pipeline
