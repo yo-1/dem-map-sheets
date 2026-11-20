@@ -23,7 +23,8 @@ def find_direct_lifecycle_calls(source):
         if not isinstance(node, ast.Call):
             continue
         func = node.func
-        if isinstance(func, ast.Name) and func.id == APP_CLASS:
+        if ((isinstance(func, ast.Name) and func.id == APP_CLASS) or
+                (isinstance(func, ast.Attribute) and func.attr == APP_CLASS)):
             findings.append((node.lineno, APP_CLASS))
         elif isinstance(func, ast.Attribute) and func.attr in LIFECYCLE_METHODS:
             findings.append((node.lineno, func.attr))
@@ -34,6 +35,10 @@ class QGISInitializationGuardTests(unittest.TestCase):
     def test_rejects_direct_constructor(self):
         self.assertEqual(find_direct_lifecycle_calls("x = QgsApplication([], False)"),
                          [(1, "QgsApplication")])
+
+    def test_rejects_qualified_constructor(self):
+        self.assertEqual(find_direct_lifecycle_calls(
+            'x = qgis.core.QgsApplication([], False)'), [(1, 'QgsApplication')])
 
     def test_rejects_init_and_exit(self):
         self.assertEqual(find_direct_lifecycle_calls("app.initQgis()\napp.exitQgis()"),
@@ -47,7 +52,7 @@ class QGISInitializationGuardTests(unittest.TestCase):
     def test_repository_test_modules(self):
         root = Path(__file__).resolve().parent
         violations = []
-        for path in sorted(root.rglob("test_*.py")):
+        for path in sorted(root.rglob("*.py")):
             if path.name == ALLOWED_HELPER:
                 continue
             for line, call in find_direct_lifecycle_calls(
