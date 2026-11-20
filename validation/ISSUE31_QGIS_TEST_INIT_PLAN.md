@@ -45,3 +45,11 @@
 - [ ] ASTガード・CI
 - [ ] Windows独立検証
 - [ ] 統括最終受入
+
+## 実装進捗（2026-11-21）
+
+- `dem_map_sheets/tests/qgis_test_runtime.py` を追加。既存 `QgsApplication.instance()` がある場合は生成・初期化・終了を行わず、standaloneで生成した場合のみ終了する。
+- `test_algorithm_failure_record.py` のモジュールimport時初期化を削除し、`setUpClass` / `tearDownClass` に移動。
+- `test_qgis_init_guard.py` を追加。ASTで個別テストの直接 `QgsApplication(...)` / `initQgis()` / `exitQgis()` を検出し、許可・禁止例の自己テストを含む。
+- **未検証**: CIワークフローとの接続、全件棚卸し、QGIS 3.44 Desktop/standalone実行、Linux CI。ASTガードは直接呼出しのみ対象で、別名や間接呼出しの検出を保証しない。
+- **注意**: 実装をコミットしたことは、テスト合格や受入完了を意味しない。
