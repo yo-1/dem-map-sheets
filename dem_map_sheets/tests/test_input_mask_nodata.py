@@ -236,6 +236,43 @@ class FalsePositiveGuardTests(InputMaskNoDataCase):
         np.testing.assert_array_equal(array[5, 2:9], np.array(SEVEN, dtype='float32'))
 
 
+class SourceNoDataOverrideRegressionTests(InputMaskNoDataCase):
+    """Claude Windows findings F2-F5: explicit srcNodata may drop valid near values."""
+
+    def _override_case(self, band_nodata, mask_mode):
+        path = self.tif(SEVEN, nodata=band_nodata)
+        if mask_mode != 'none':
+            ds = gdal.Open(str(path), gdal.GA_Update)
+            with gdal.config_option('GDAL_TIFF_INTERNAL_MASK',
+                                    'YES' if mask_mode == 'internal' else 'NO'):
+                ds.GetRasterBand(1).CreateMaskBand(gdal.GMF_PER_DATASET)
+                ds.GetRasterBand(1).GetMaskBand().WriteArray(
+                    np.full((20, 20), 255, dtype='uint8'))
+            ds = None
+        _error, record = self.expect_stop(
+            [path], output_nodata=-32768.0, source_nodata=-9999.0)
+        self.assertEqual(record['status'], 'failed')
+        self.assertEqual(len(record['failure_detail']), 1)
+        entry = record['failure_detail'][0]
+        self.assertEqual(entry['role'], 'input_declared')
+        self.assertEqual(entry['declared_nodata'], -9999.0)
+        self.assertEqual(entry['count'], 4)
+        self.assertEqual([(p['row'], p['col']) for p in entry['positions']],
+                         [(5, 2), (5, 3), (5, 4), (5, 5)])
+
+    def test_F2_no_band_nodata_internal_mask(self):
+        self._override_case(None, 'internal')
+
+    def test_F3_no_band_nodata_no_mask(self):
+        self._override_case(None, 'none')
+
+    def test_F4_different_band_nodata_internal_mask(self):
+        self._override_case(-32768.0, 'internal')
+
+    def test_F5_different_band_nodata_external_mask(self):
+        self._override_case(-32768.0, 'external')
+
+
 class MixedRoleTests(InputMaskNoDataCase):
     """Both collision kinds in one run (ChatGPT review of PR #27):
     the headline error describes the first entry's kind, so its cell
