@@ -268,6 +268,7 @@ class SourceNoDataOverrideRegressionTests(InputMaskNoDataCase):
         self.assertIn('source_nodata上書き値（-9999.0）', str(error))
         self.assertNotIn('の宣言NoData値（-9999.0）と完全一致', str(error))
         self.assertIn('上書きが有効な間は', str(error))
+        self.assertIn('cannot prevent this. Processing stopped', str(error))
         if band_nodata is None:
             self.assertIn('宣言NoData値は未設定', str(error))
         else:
