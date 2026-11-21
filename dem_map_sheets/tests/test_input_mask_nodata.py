@@ -107,6 +107,9 @@ class ReproductionTests(InputMaskNoDataCase):
         self.assertEqual(entry['stage'], 'normalize')
         self.assertEqual(entry['role'], 'input_declared')
         self.assertEqual(entry['declared_nodata'], -9999.0)
+        self.assertEqual(entry['effective_source_nodata'], -9999.0)
+        self.assertEqual(entry['effective_source_nodata_origin'], 'band')
+        self.assertEqual(entry['band_declared_nodata'], -9999.0)
         self.assertEqual(entry['count'], 4)
         self.assertEqual([(p['row'], p['col']) for p in entry['positions']],
                          [(5, 2), (5, 3), (5, 4), (5, 5)])
@@ -249,13 +252,29 @@ class SourceNoDataOverrideRegressionTests(InputMaskNoDataCase):
                 ds.GetRasterBand(1).GetMaskBand().WriteArray(
                     np.full((20, 20), 255, dtype='uint8'))
             ds = None
-        _error, record = self.expect_stop(
+        error, record = self.expect_stop(
             [path], output_nodata=-32768.0, source_nodata=-9999.0)
         self.assertEqual(record['status'], 'failed')
         self.assertEqual(len(record['failure_detail']), 1)
         entry = record['failure_detail'][0]
         self.assertEqual(entry['role'], 'input_declared')
         self.assertEqual(entry['declared_nodata'], -9999.0)
+        self.assertEqual(entry['effective_source_nodata'], -9999.0)
+        self.assertEqual(entry['effective_source_nodata_origin'], 'override')
+        expected_band=(str(band_nodata) if band_nodata is not None and not np.isfinite(band_nodata)
+                       else band_nodata)
+        self.assertEqual(entry['band_declared_nodata'], expected_band)
+        json.dumps(entry, allow_nan=False)
+        self.assertIn('source_nodata上書き値（-9999.0）', str(error))
+        self.assertNotIn('の宣言NoData値（-9999.0）と完全一致', str(error))
+        self.assertIn('上書きが有効な間は', str(error))
+        if band_nodata is None:
+            self.assertIn('宣言NoData値は未設定', str(error))
+        else:
+            self.assertIn(f'宣言NoData値は {band_nodata}', str(error))
+        report_paths = list(self.root.rglob('input_report.json'))
+        report = json.loads(report_paths[-1].read_text(encoding='utf-8'))
+        self.assertEqual(report['nodata_value_collisions'][0]['effective_source_nodata_origin'], 'override')
         self.assertEqual(entry['count'], 4)
         self.assertEqual([(p['row'], p['col']) for p in entry['positions']],
                          [(5, 2), (5, 3), (5, 4), (5, 5)])
@@ -271,6 +290,47 @@ class SourceNoDataOverrideRegressionTests(InputMaskNoDataCase):
 
     def test_F5_different_band_nodata_external_mask(self):
         self._override_case(-32768.0, 'external')
+
+    def test_equal_override_still_records_the_configured_origin(self):
+        self._override_case(-9999.0, 'none')
+
+    def test_nan_band_declaration_is_json_safe_and_not_unset(self):
+        self._override_case(float('nan'), 'none')
+
+    def test_skip_invalid_cannot_bypass_override_collision(self):
+        path = self.tif(SEVEN, nodata=-32768.)
+        _error, record = self.expect_stop([path], output_nodata=-32768.,
+                                         source_nodata=-9999., skip_invalid_rasters=True)
+        self.assertEqual(record['failure_detail'][0]['count'], 4)
+        self.assertEqual(record['failure_detail'][0]['effective_source_nodata_origin'], 'override')
+
+    def test_override_outside_window_preserves_normal_output(self):
+        path = self.tif(KEPT, nodata=-32768.0)
+        manifest, array, nodata, _out = self.run_dem(
+            [path], output_nodata=-32768.0, source_nodata=-9999.0)
+        self.assertEqual(manifest['status'], 'completed')
+        np.testing.assert_array_equal(array[5, 2:5], np.array(KEPT, dtype='float32'))
+        self.assertEqual(nodata, -32768.0)
+
+    def test_disabled_override_keeps_band_origin(self):
+        from dem_map_sheets.engine.input_sources import normalize
+        path = self.tif(SEVEN)
+        notes = []
+        normalize(path, self.root/'disabled.tif',
+                  self.config([path], source_nodata=-999999., output_nodata=-32768.),
+                  gdal, osr, override_nodata=False, notes=notes)
+        self.assertEqual(notes[0]['effective_source_nodata_origin'], 'band')
+        self.assertEqual(notes[0]['effective_source_nodata'], -9999.)
+
+    def test_output_first_does_not_mislabel_override_subtotal(self):
+        a = self.tif([-32768.002], nodata=-999999.)
+        b = self.tif(SEVEN, nodata=-999999.)
+        _error, record = self.expect_stop(
+            [a, b], output_nodata=-32768., source_nodata=-9999.)
+        self.assertEqual([d['role'] for d in record['failure_detail']], ['output', 'input_declared'])
+        self.assertEqual([d['count'] for d in record['failure_detail']], [1, 4])
+        self.assertIn('source_nodata上書きを含む', record['error'])
+        self.assertNotIn('入力の宣言NoData近傍', record['error'])
 
 
 class MixedRoleTests(InputMaskNoDataCase):
