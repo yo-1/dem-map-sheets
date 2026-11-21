@@ -219,7 +219,12 @@ class RunProcessEnvironmentTests(unittest.TestCase):
             with mock.patch.dict('os.environ',
                                  {'PYTHONHOME': '/qgis-python',
                                   'PYTHONPATH': '/qgis/plugins'}):
-                run_process(sys.executable, ['-c', code, str(dump)], log)
+                # QGIS's bin/python3.exe needs PYTHONHOME to locate stdlib.
+                # Use the base CPython interpreter to test environment stripping.
+                exe = Path(sys.base_prefix) / 'python.exe' if sys.platform == 'win32' else Path(sys.executable)
+                if not exe.exists():
+                    exe = Path(sys.executable)
+                run_process(str(exe), ['-c', code, str(dump)], log)
             child_env = json.loads(dump.read_text(encoding='utf-8'))
             self.assertNotIn('PYTHONHOME', child_env)
             self.assertNotIn('PYTHONPATH', child_env)

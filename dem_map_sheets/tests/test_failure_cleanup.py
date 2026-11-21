@@ -92,7 +92,7 @@ class PruneTests(unittest.TestCase):
             removed, retained = prune_work_after_failure(work)
             self.assertGreaterEqual(removed, 160000)
             self.assertGreater(retained, 0)
-            remaining = sorted(str(p.relative_to(work)) for p in work.rglob('*') if p.is_file())
+            remaining = sorted(p.relative_to(work).as_posix() for p in work.rglob('*') if p.is_file())
             self.assertEqual(remaining, ['pipeline.json', 'run.log',
                                          'run.log.stderr', 'version.txt'])
             self.assertFalse((work / 'sub').exists())
@@ -218,7 +218,7 @@ class PruneRobustnessTests(unittest.TestCase):
             (work / 'a' / 'keep.json').write_text('{}')
             removed, retained = prune_work_after_failure(work)
             self.assertEqual(removed, 3000)
-            remaining = sorted(str(p.relative_to(work)) for p in work.rglob('*') if p.is_file())
+            remaining = sorted(p.relative_to(work).as_posix() for p in work.rglob('*') if p.is_file())
             self.assertEqual(remaining, ['a/b/c/deep.log', 'a/keep.json'])
             self.assertTrue((work / 'a' / 'b' / 'c').is_dir())
 

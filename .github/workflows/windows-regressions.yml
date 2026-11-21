@@ -1,0 +1,53 @@
+name: Windows baseline regressions (Issue 34)
+on:
+  pull_request:
+    paths:
+      - 'dem_map_sheets/tests/test_failure_cleanup.py'
+      - 'dem_map_sheets/tests/test_input_options.py'
+      - 'dem_map_sheets/tests/test_temp_cleanup.py'
+      - 'dem_map_sheets/engine/**'
+      - '.github/workflows/windows-regressions.yml'
+  workflow_dispatch:
+jobs:
+  windows-targeted:
+    runs-on: windows-2022
+    defaults:
+      run:
+        shell: bash -el {0}
+    steps:
+      - uses: actions/checkout@v4
+      - uses: mamba-org/setup-micromamba@v2
+        with:
+          environment-name: dem-windows-test
+          create-args: >-
+            python=3.12
+            gdal
+            numpy
+          init-shell: bash
+          cache-environment: true
+      - name: Show runtime and run each regression independently
+        env:
+          PYTHONPATH: ${{ github.workspace }}
+        run: |
+          python - <<'PY'
+          import os, sys, subprocess
+          from osgeo import gdal
+          print('Python:', sys.version, 'GDAL:', gdal.VersionInfo('--version'), flush=True)
+          tests = [
+            ('test_failure_cleanup', 'PruneRobustnessTests.test_prune_is_recursive'),
+            ('test_input_options', 'DiscoverTests.test_glob_pattern'),
+            ('test_temp_cleanup', 'RunProcessEnvironmentTests.test_python_env_vars_are_stripped_from_child'),
+          ]
+          failed = []
+          for module, test in tests:
+              cmd = [sys.executable, '-m', 'unittest', '-v', f'{module}.{test}']
+              env = dict(os.environ)
+              env['PYTHONPATH'] = os.pathsep.join(['dem_map_sheets/tests', env.get('PYTHONPATH', '')])
+              print('RUN', ' '.join(cmd), flush=True)
+              result = subprocess.run(cmd, env=env, capture_output=True, text=True, timeout=120)
+              print(result.stdout, result.stderr, 'EXIT', result.returncode, flush=True)
+              if result.returncode:
+                  failed.append(f'{module}.{test}')
+          if failed:
+              raise SystemExit('Windows regression failures: ' + ', '.join(failed))
+          PY

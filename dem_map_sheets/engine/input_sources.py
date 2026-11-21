@@ -296,16 +296,19 @@ def discover(inputs, base_dir, c, feedback=None):
     for entry in inputs:
         p=Path(entry).expanduser()
         if not p.is_absolute():p=Path(base_dir)/p
-        try:
-            mode = _network_call(f'入力パス確認: {p}', lambda: _stat_input_path(p).st_mode, feedback)
-            matches = [p]
-        except FileNotFoundError:
+        if glob.has_magic(str(p)):
+            # Windows os.stat('*.tif') raises WinError 123, not FileNotFoundError.
+            # Expand wildcard paths before attempting to stat individual matches.
             mode = None
-            if glob.has_magic(str(p)):
-                matches = [Path(x) for x in _network_call(
-                    f'入力パターン検索: {p}',
-                    lambda: sorted(glob.glob(str(p), recursive=c['recursive'])), feedback)]
-            else:
+            matches = [Path(x) for x in _network_call(
+                f'入力パターン検索: {p}',
+                lambda: sorted(glob.glob(str(p), recursive=c['recursive'])), feedback)]
+        else:
+            try:
+                mode = _network_call(f'入力パス確認: {p}', lambda: _stat_input_path(p).st_mode, feedback)
+                matches = [p]
+            except FileNotFoundError:
+                mode = None
                 matches = []
         if not matches:raise ValueError('No input matched: '+str(entry)+'（入力ファイルが見つかりません。パスの綴りとファイルの存在を確認してください）')
         found=0

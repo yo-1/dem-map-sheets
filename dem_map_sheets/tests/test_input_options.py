@@ -125,7 +125,8 @@ class DiscoverTests(unittest.TestCase):
         self.assertEqual(self.names([self.root], recursive=False), ['B.TIF', 'a.tif'])
 
     def test_glob_pattern(self):
-        self.assertEqual(self.names([self.root / '*.tif']), ['a.tif'])
+        self.assertEqual(self.names([self.root / '*.tif']),
+                         ['B.TIF', 'a.tif'] if sys.platform == 'win32' else ['a.tif'])
 
     def test_duplicate_selection_is_deduplicated(self):
         self.assertEqual(self.names([self.root / 'a.tif', self.root / 'a.tif', self.root]),
