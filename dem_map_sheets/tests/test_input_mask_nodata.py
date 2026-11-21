@@ -156,6 +156,44 @@ class FalsePositiveGuardTests(InputMaskNoDataCase):
         manifest, array, nodata, _out = self.run_dem([path], output_nodata=-32768.0)
         self.assertEqual(manifest['status'], 'completed')
 
+    def test_internal_explicit_mask_near_declared_values_fail_fast(self):
+        path = self.tif(SEVEN, nodata=-9999.0)
+        ds = gdal.Open(str(path), gdal.GA_Update)
+        band = ds.GetRasterBand(1)
+        with gdal.config_option('GDAL_TIFF_INTERNAL_MASK', 'YES'):
+            band.CreateMaskBand(gdal.GMF_PER_DATASET)
+            band.GetMaskBand().WriteArray(np.full((20, 20), 255, dtype='uint8'))
+        ds = None
+        ds = gdal.Open(str(path))
+        self.assertTrue(ds.GetRasterBand(1).GetMaskFlags() & gdal.GMF_PER_DATASET)
+        ds = None
+        _error, record = self.expect_stop([path], output_nodata=-32768.0)
+        self.assertEqual(record['failure_detail'][0]['role'], 'input_declared')
+        self.assertEqual(record['failure_detail'][0]['count'], 4)
+
+    def test_external_explicit_mask_near_declared_values_fail_fast(self):
+        path = self.tif(SEVEN, nodata=-9999.0)
+        with gdal.config_option('GDAL_TIFF_INTERNAL_MASK', 'NO'):
+            ds = gdal.Open(str(path), gdal.GA_Update)
+            band = ds.GetRasterBand(1)
+            band.CreateMaskBand(gdal.GMF_PER_DATASET)
+            band.GetMaskBand().WriteArray(np.full((20, 20), 255, dtype='uint8'))
+            ds = None
+        self.assertTrue(Path(str(path) + '.msk').exists())
+        _error, record = self.expect_stop([path], output_nodata=-32768.0)
+        self.assertEqual(record['failure_detail'][0]['role'], 'input_declared')
+        self.assertEqual(record['failure_detail'][0]['count'], 4)
+
+    def test_explicit_mask_exact_declared_hole_does_not_fail(self):
+        path = self.tif([-9999.0, 42.0], nodata=-9999.0)
+        ds = gdal.Open(str(path), gdal.GA_Update)
+        band = ds.GetRasterBand(1)
+        band.CreateMaskBand(gdal.GMF_PER_DATASET)
+        band.GetMaskBand().WriteArray(np.full((20, 20), 255, dtype='uint8'))
+        ds = None
+        manifest, _array, _nodata, _out = self.run_dem([path], output_nodata=-32768.0)
+        self.assertEqual(manifest['status'], 'completed')
+
     def test_nan_cells_are_not_flagged(self):
         a = raster([np.nan, np.nan, 42.0])
         self._n += 1
