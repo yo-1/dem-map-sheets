@@ -422,15 +422,23 @@ def collision_entry(source, stage, output_nodata, count, detail):
             'value':(sorted(detail.get('values',()))[0] if detail.get('values') else float(output_nodata))}
 
 
-def input_mask_collision_entry(source, stage, declared_nodata, count, detail):
-    """One structured record for valid cells the INPUT's own NoData
-    declaration makes GDAL read as missing (input_report / run.json
+def input_mask_collision_entry(source, stage, declared_nodata, count, detail,
+                               origin='band', band_nodata=None):
+    """One structured record for cells near the effective INPUT NoData
+    (band declaration or active override; input_report / run.json
     failure_detail, role 'input_declared'). The window is the declared
     value's own nodata_window: the cells lie inside it but are not
     exactly the declared value."""
     _v,lo,hi=nodata_window(declared_nodata)
+    actual=band_nodata if origin=='override' or band_nodata is not None else declared_nodata
+    band_definition=(float(actual) if actual is not None and math.isfinite(actual) else
+                     str(actual) if actual is not None else None)
     return {'source':str(source),'stage':stage,'role':'input_declared',
             'declared_nodata':float(declared_nodata),
+            # Keep declared_nodata as the legacy effective value for consumers.
+            'effective_source_nodata':float(declared_nodata),
+            'effective_source_nodata_origin':origin,
+            'band_declared_nodata':band_definition,
             'nodata_window':[lo,hi],'count':int(count),'nodata_collision_cells':int(count),
             'values':sorted(detail.get('values',())),'positions':detail.get('positions',[]),
             'value':(sorted(detail.get('values',()))[0] if detail.get('values') else float(declared_nodata))}
@@ -584,7 +592,9 @@ def normalize(path, dest, c, gdal, osr, feedback=None, override_nodata=True, not
     if notes is not None and input_collisions:
         entry={'source':str(path),'nonfinite_cells':0,
                'nodata_collision_cells':int(input_collisions)}
-        entry.update(input_mask_collision_entry(path,'normalize',declared,input_collisions,input_detail))
+        origin='override' if override_nodata and c['source_nodata'] is not None else 'band'
+        entry.update(input_mask_collision_entry(path,'normalize',declared,input_collisions,input_detail,
+                                               origin,band_nodata))
         notes.append(entry)
     cancelled(feedback)
     return str(dest)
@@ -772,19 +782,38 @@ def input_mask_collision_error(source, declared_nodata, cells, entries=None):
             f"row {p['row']}, col {p['col']}"+(f" (x={p['x']:.3f}, y={p['y']:.3f})" if 'x' in p else '') for p in positions[:3])+'.'
     detail_ja=f' 該当値の例: {shown}。' if shown else ''
     detail_en=f' Example values: {shown}.' if shown else ''
+    overridden=first.get('effective_source_nodata_origin')=='override'
+    definition=(f'source_nodata上書き値（{declared_nodata}）' if overridden else
+                f'宣言NoData値（{declared_nodata}）')
+    band_definition=first.get('band_declared_nodata')
+    origin_ja=((' 入力ファイルの宣言NoData値は未設定です。' if band_definition is None else
+                f' 入力ファイルの宣言NoData値は {band_definition} です。') if overridden else '')
+    remedy_ja=('元データの欠測定義と有効な標高値を確認し、source_nodataの設定を見直してください。'
+               '上書きが有効な間は入力ファイルのNoData宣言だけを変更しても回避できません。' if overridden else
+               'これらの値が有効な標高なら、入力ファイルのNoData宣言をデータと重ならない値に変更するか、元データの無効値（source_nodata）に宣言値と異なる値を指定して、再実行してください。'
+               '欠測を表す値なら、宣言NoData値と完全一致する値に直してください。')
+    definition_en=('source_nodata override' if overridden else 'input declared NoData value')
+    remedy_en=('Review source_nodata against the actual missing-data definition and valid elevations. '
+               'Changing only the band declaration cannot bypass an active override.' if overridden else
+               'If they are valid elevations, change the input file\'s NoData declaration to a value clear '
+               'of the data, or specify a different source_nodata, and re-run. '
+               'If they represent missing data, store them as exactly the declared NoData value.')
+    impact_ja=('このsource_nodata上書きを入力欠測判定に適用して処理すると、それらのセルが欠測として扱われるため、'
+               '処理を停止しました。出力NoData値だけを変更しても回避できません（値の置換や補間は行っていません）。' if overridden else
+               'このまま処理すると、それらのセルは入力の読み取りの時点で欠測として扱われ、出力NoData値にかかわらず失われてしまうため、処理を停止しました（値の置換や補間は行っていません）。')
+    impact_en=('Applying this source_nodata override would treat them as missing; '
+               'changing only output NoData cannot prevent this. ' if overridden else
+               'GDAL already reads them as missing, so they would be lost whatever the output NoData value is; ')
     error=NoDataCollisionError(
-        f'入力「{source}」の宣言NoData値（{declared_nodata}）と完全一致はしないが、GDALが欠測として読み取る近傍（{lo:.4f}〜{hi:.4f}）の有効な標高セルが {cells} 件あります。'
-        f'{detail_ja}{where}'
-        'このまま処理すると、それらのセルは入力の読み取りの時点で欠測として扱われ、出力NoData値にかかわらず失われてしまうため、処理を停止しました（値の置換や補間は行っていません）。'
-        'これらの値が有効な標高なら、入力ファイルのNoData宣言をデータと重ならない値に変更するか、元データの無効値（source_nodata）に宣言値と異なる値を指定して、再実行してください。'
-        '欠測を表す値なら、宣言NoData値と完全一致する値に直してください。'
-        f' (Valid elevation cells that do not exactly equal the input declared NoData value ({declared_nodata}) '
+        f'入力「{source}」の{definition}と完全一致はしないが、GDALが欠測として読み取る近傍（{lo:.4f}〜{hi:.4f}）の有効な標高セルが {cells} 件あります。'
+        f'{origin_ja}{detail_ja}{where}'
+        f'{impact_ja}'
+        f'{remedy_ja}'
+        f' (Valid elevation cells that do not exactly equal the {definition_en} ({declared_nodata}) '
         f'but lie inside the range GDAL reads as that NoData ({lo:.4f} to {hi:.4f}) were found in {source}: {cells} cell(s).'
         f'{detail_en}{where_en} '
-        'GDAL already reads them as missing, so they would be lost whatever the output NoData value is; '
-        'processing stopped and no value was replaced or interpolated. If they are valid elevations, change the '
-        'input file\'s NoData declaration to a value clear of the data, or specify a different source_nodata, '
-        'and re-run. If they represent missing data, store them as exactly the declared NoData value.)')
+        f'{impact_en}'
+        f'{"Processing" if overridden else "processing"} stopped and no value was replaced or interpolated. {remedy_en})')
     error.detail=[dict(e) for e in entries] if entries else [
         {'source':str(source),'role':'input_declared','declared_nodata':float(declared_nodata),'count':int(cells)}]
     return error
@@ -1104,7 +1133,9 @@ def prepare_inputs(c,work,gdal,osr,feedback=None):
                     if first_role=='input_declared':
                         extra+=f' なお、出力NoData値との衝突も {other_total} 件あります（詳細は同じ failure_detail）。'
                     else:
-                        extra+=f' なお、入力の宣言NoData近傍の衝突も {other_total} 件あります（詳細は同じ failure_detail）。'
+                        label=('入力NoData（source_nodata上書きを含む）' if any(
+                            e.get('effective_source_nodata_origin')=='override' for e in other) else '入力の宣言NoData')
+                        extra+=f' なお、{label}近傍の衝突も {other_total} 件あります（詳細は同じ failure_detail）。'
                 error=NoDataCollisionError(str(error)+extra)
                 error.detail=detail
             raise error
