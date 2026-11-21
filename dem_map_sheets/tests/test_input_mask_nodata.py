@@ -15,8 +15,9 @@ own GDAL mask before warping - but only when that mask is derived
 solely from the declared NoData (GMF_NODATA). An explicit mask band, an
 alpha band or an external .msk also produces mask-0 cells for reasons
 that are the file's own explicit declaration, so those inputs are
-outside the check by design and must NOT be stopped (documented
-limitation). NaN cells are the non-finite path, never this check.
+    outside the original PR #27 check. Issue #29 adds a separate explicit
+    mask safety guard rather than changing this original check.
+    NaN cells are the non-finite path, never this check.
 Cells exactly equal to the declared NoData are the file's own holes.
 """
 import json
@@ -35,6 +36,7 @@ if HAVE_GDAL:
     from osgeo import gdal, osr
     from dem_map_sheets.engine.dem_pipeline import run
     from dem_map_sheets.engine.input_sources import DEFAULTS, NoDataCollisionError
+    from dem_map_sheets.engine.mask_guard import MaskSemanticsConflictError
 
 # the seven values of the Windows reports; the first four sit inside
 # GDAL's tolerance of -9999, the last three outside it
@@ -141,9 +143,9 @@ class ReproductionTests(InputMaskNoDataCase):
 
 
 class FalsePositiveGuardTests(InputMaskNoDataCase):
-    def test_explicit_mask_band_is_not_flagged(self):
-        """An internal mask band masking a plain valid value is the file's
-        own explicit declaration: outside this check, the run completes."""
+    def test_explicit_mask_uses_separate_issue29_safety_stop(self):
+        """Intentional Issue #29 change: potential revival is no longer
+        accepted as completed, even where a GDAL version preserves it."""
         path = self.tif([100.0, 200.0], nodata=-9999.0)
         ds = gdal.Open(str(path), gdal.GA_Update)
         band = ds.GetRasterBand(1)
@@ -153,8 +155,14 @@ class FalsePositiveGuardTests(InputMaskNoDataCase):
         band.GetMaskBand().WriteArray(mask)
         ds.FlushCache()
         ds = None
-        manifest, array, nodata, _out = self.run_dem([path], output_nodata=-32768.0)
-        self.assertEqual(manifest['status'], 'completed')
+        out = self.root / 'explicit_mask_stop'
+        with self.assertRaises(MaskSemanticsConflictError):
+            run(self.config([path], output_nodata=-32768.0), out, gdal, osr, None)
+        record = json.loads((out / 'run.json').read_text(encoding='utf-8'))
+        self.assertEqual(record['status'], 'failed')
+        self.assertEqual(record['failure_detail'][0]['role'], 'input_mask')
+        self.assertEqual(record['failure_detail'][0]['reason'], 'explicit_invalid_may_become_valid')
+        self.assertEqual(record['failure_detail'][0]['count_kind'], 'potential')
 
     def test_internal_explicit_mask_near_declared_values_fail_fast(self):
         path = self.tif(SEVEN, nodata=-9999.0)

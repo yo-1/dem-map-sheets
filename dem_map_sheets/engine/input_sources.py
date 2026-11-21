@@ -11,6 +11,10 @@ import time
 import zipfile
 import numpy as np
 try:
+    from .mask_guard import MaskSemanticsConflictError, inspect_explicit_mask
+except ImportError:
+    from mask_guard import MaskSemanticsConflictError, inspect_explicit_mask
+try:
     from ._constants import NODATA, DEFAULT_OUTPUT_NODATA, nodata_window
 except ImportError:
     from _constants import NODATA, DEFAULT_OUTPUT_NODATA, nodata_window
@@ -534,14 +538,17 @@ def normalize(path, dest, c, gdal, osr, feedback=None, override_nodata=True, not
     src=gdal.Open(str(path))
     if src is None or src.RasterCount!=1:raise ValueError('Expected single-band elevation raster: '+str(path))
     band=src.GetRasterBand(1)
-    if band.GetScale() not in (None,1) or band.GetOffset() not in (None,0):
-        raise ValueError('Apply raster scale/offset to elevation values before import: '+str(path))
     out_nd=output_nodata_of(c)
     band_nodata=band.GetNoDataValue()
     if override_nodata and c['source_nodata'] is not None:
         declared=c['source_nodata']
     else:
         declared=band_nodata
+    inspect_explicit_mask(src,path,declared,
+        c.get('_effective_nodata_origin','override') if override_nodata and c['source_nodata'] is not None else 'band',
+        gdal,'normalize_preflight',feedback,output_nodata=out_nd)
+    if band.GetScale() not in (None,1) or band.GetOffset() not in (None,0):
+        raise ValueError('Apply raster scale/offset to elevation values before import: '+str(path))
     mask_band=None
     mask_from_nodata=True
     if band_nodata is not None and math.isfinite(band_nodata) and declared==band_nodata:
@@ -861,6 +868,11 @@ def prepare_inputs(c,work,gdal,osr,feedback=None):
                         if ds.GetRasterBand(band_index).Checksum()==-1:
                             error=ValueError('GDAL could not read the raster data (checksum failed)')
                             break
+                        inspect_explicit_mask(ds,path,ds.GetRasterBand(band_index).GetNoDataValue(),
+                            'band',gdal,'passthrough_preflight',feedback,band_index,
+                            output_nodata=output_nodata_of(c))
+            except MaskSemanticsConflictError:
+                raise
             except Exception as exc:
                 error=exc
             finally:
@@ -967,7 +979,8 @@ def prepare_inputs(c,work,gdal,osr,feedback=None):
                         raise ValueError('Non-GeoTIFF forestry TIFF requires a same-stem TFW/TIFW/WLD: '+str(path))
                     if not embedded and not c['input_crs'].strip():
                         raise ValueError('TIFF/world-file input has no embedded CRS; specify input_crs: '+str(path))
-                    raw=path;source={**c,'source_nodata':band_nodata if band_nodata is not None else c['forest_nodata']}
+                    raw=path;source={**c,'source_nodata':band_nodata if band_nodata is not None else c['forest_nodata'],
+                        '_effective_nodata_origin':'band' if band_nodata is not None else 'forest_default'}
                     report['detected'].append({'path':str(path),'kind':'geotiff' if embedded else 'tiff_worldfile'})
                 aligned=work/f'aligned_{ordinal:06d}.tif'
                 outputs.append(normalize(raw,aligned,source,gdal,osr,feedback,kind=='raster',notes=notes))
@@ -1019,6 +1032,9 @@ def prepare_inputs(c,work,gdal,osr,feedback=None):
                     if c['input_type']=='raster':
                         try:
                             aligned=normalize(raw,work/f'aligned_{ordinal:06d}.tif',c,gdal,osr,feedback,True,notes)
+                        except MaskSemanticsConflictError:
+                            # Safety failures cannot become successful skips.
+                            raise
                         except (ValueError, RuntimeError) as exc:
                             reason=(f'入力ラスターを読み込めません: {path}。ファイルが破損していないか、TIFF等の対応形式か、'
                                     f'単一バンドの標高データかを確認してください。GDAL詳細: {exc}')
