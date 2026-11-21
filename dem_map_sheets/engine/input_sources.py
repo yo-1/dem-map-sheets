@@ -813,7 +813,7 @@ def input_mask_collision_error(source, declared_nodata, cells, entries=None):
         f'but lie inside the range GDAL reads as that NoData ({lo:.4f} to {hi:.4f}) were found in {source}: {cells} cell(s).'
         f'{detail_en}{where_en} '
         f'{impact_en}'
-        f'processing stopped and no value was replaced or interpolated. {remedy_en})')
+        f'{"Processing" if overridden else "processing"} stopped and no value was replaced or interpolated. {remedy_en})')
     error.detail=[dict(e) for e in entries] if entries else [
         {'source':str(source),'role':'input_declared','declared_nodata':float(declared_nodata),'count':int(cells)}]
     return error
