@@ -1,0 +1,22 @@
+name: QGIS test lifecycle guard
+
+on:
+  pull_request:
+    paths:
+      - 'dem_map_sheets/tests/**'
+      - '.github/workflows/qgis-test-lifecycle.yml'
+  push:
+    paths:
+      - 'dem_map_sheets/tests/**'
+      - '.github/workflows/qgis-test-lifecycle.yml'
+
+jobs:
+  static-lifecycle-guard:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.12'
+      - name: Verify lifecycle calls are centralized
+        run: python -m unittest discover -s dem_map_sheets/tests -p test_qgis_init_guard.py -v

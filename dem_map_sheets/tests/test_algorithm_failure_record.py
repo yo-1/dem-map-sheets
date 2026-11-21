@@ -17,16 +17,11 @@ from unittest import mock
 
 try:
     from qgis.core import (
-        QgsApplication, QgsProcessingContext, QgsProcessingException,
+        QgsProcessingContext, QgsProcessingException,
         QgsProcessingFeedback)
     _HAS_QGIS = True
 except Exception:
     _HAS_QGIS = False
-
-if _HAS_QGIS:
-    _APP = QgsApplication([], False)
-    _APP.initQgis()
-
 
 def _algorithm_and_params(parent, files, input_type=2):
     from dem_map_sheets.algorithm import DEMMapSheetsAlgorithm
@@ -68,6 +63,20 @@ def _algorithm_and_params(parent, files, input_type=2):
 
 @unittest.skipUnless(_HAS_QGIS, 'QGIS is not available in this environment')
 class AlgorithmFailureRecordTests(unittest.TestCase):
+    @classmethod
+    def setUpClass(cls):
+        super().setUpClass()
+        from dem_map_sheets.tests.qgis_test_runtime import qgis_test_application
+        cls._qgis_context = qgis_test_application()
+        cls._qgis_context.__enter__()
+
+    @classmethod
+    def tearDownClass(cls):
+        try:
+            cls._qgis_context.__exit__(None, None, None)
+        finally:
+            super().tearDownClass()
+
     def _run_expecting_failure(self, algo, params):
         context = QgsProcessingContext()
         feedback = QgsProcessingFeedback()
