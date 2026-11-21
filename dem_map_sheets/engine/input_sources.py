@@ -437,7 +437,7 @@ def input_mask_collision_entry(source, stage, declared_nodata, count, detail):
 
 
 def _scan_source_band(band, declared_nodata, output_nodata, geotransform=None, detail=None,
-                      mask_band=None, input_detail=None, mask_from_nodata=True):
+                      mask_band=None, input_detail=None, mask_from_nodata=True, scan_override_window=False):
     """One blockwise pass over a source band before warping.
 
     Returns (nonfinite, collisions, input_collisions). Non-finite
@@ -465,15 +465,20 @@ def _scan_source_band(band, declared_nodata, output_nodata, geotransform=None, d
         hits=collision_cells(block,finite,declared_nodata,output_nodata)
         n=int(hits.sum());collisions+=n
         if n and detail is not None:add_collision_detail(detail,hits,y,block,geotransform)
-        if mask_band is not None:
-            mask=mask_band.ReadAsArray(0,y,band.XSize,min(512,band.YSize-y))
-            if mask is None:raise RuntimeError('Raster mask read failed during NoData scan')
+        if mask_band is not None or scan_override_window:
+            mask=None
+            if mask_band is not None:
+                mask=mask_band.ReadAsArray(0,y,band.XSize,min(512,band.YSize-y))
+            if mask_band is not None and mask is None:raise RuntimeError('Raster mask read failed during NoData scan')
             # A NoData-derived mask marks near-declaration cells invalid (0).
             # An explicit mask can mark the same cells valid (255), yet GDAL
             # Warp still treats them as source NoData. Guard both cases.
             _v,lo,hi=nodata_window(declared_nodata)
             near_value=finite&(block!=block.dtype.type(declared_nodata))&(block>=lo)&(block<=hi)
-            near=near_value&((mask==0) if mask_from_nodata else (mask!=0))&~hits
+            # An explicit srcNodata override is interpreted by GDAL Warp
+            # even without a source mask or band NoData declaration.
+            near=(near_value if scan_override_window else
+                  near_value&((mask==0) if mask_from_nodata else (mask!=0)))&~hits
             m=int(near.sum());input_collisions+=m
             if m and input_detail is not None:add_collision_detail(input_detail,near,y,block,geotransform)
     return nonfinite,collisions,input_collisions
@@ -547,9 +552,12 @@ def normalize(path, dest, c, gdal, osr, feedback=None, override_nodata=True, not
         if mask_flags==gdal.GMF_NODATA or (mask_flags&gdal.GMF_PER_DATASET):
             mask_band=band.GetMaskBand()
             mask_from_nodata=(mask_flags==gdal.GMF_NODATA)
+    scan_override_window=(override_nodata and c['source_nodata'] is not None and
+                          declared!=band_nodata)
     scan_detail={};input_detail={}
     nonfinite,collisions,input_collisions=_scan_source_band(
-        band,declared,out_nd,src.GetGeoTransform(),scan_detail,mask_band,input_detail,mask_from_nodata)
+        band,declared,out_nd,src.GetGeoTransform(),scan_detail,mask_band,input_detail,
+        mask_from_nodata,scan_override_window)
     if override_nodata and c['source_nodata'] is None and band_nodata is None and not nonfinite:
         raise ValueError('Source raster has no NoData definition; specify source_nodata: '+str(path)+'（入力ラスタにNoDataが定義されていません。source_nodata（元データの無効値）を指定してください）')
     source=crs_of(c['input_crs'] or src.GetProjection(),osr)
