@@ -156,6 +156,44 @@ class FalsePositiveGuardTests(InputMaskNoDataCase):
         manifest, array, nodata, _out = self.run_dem([path], output_nodata=-32768.0)
         self.assertEqual(manifest['status'], 'completed')
 
+    def test_internal_explicit_mask_near_declared_values_fail_fast(self):
+        path = self.tif(SEVEN, nodata=-9999.0)
+        ds = gdal.Open(str(path), gdal.GA_Update)
+        band = ds.GetRasterBand(1)
+        with gdal.config_option('GDAL_TIFF_INTERNAL_MASK', 'YES'):
+            band.CreateMaskBand(gdal.GMF_PER_DATASET)
+            band.GetMaskBand().WriteArray(np.full((20, 20), 255, dtype='uint8'))
+        ds = None
+        ds = gdal.Open(str(path))
+        self.assertTrue(ds.GetRasterBand(1).GetMaskFlags() & gdal.GMF_PER_DATASET)
+        ds = None
+        _error, record = self.expect_stop([path], output_nodata=-32768.0)
+        self.assertEqual(record['failure_detail'][0]['role'], 'input_declared')
+        self.assertEqual(record['failure_detail'][0]['count'], 4)
+
+    def test_external_explicit_mask_near_declared_values_fail_fast(self):
+        path = self.tif(SEVEN, nodata=-9999.0)
+        with gdal.config_option('GDAL_TIFF_INTERNAL_MASK', 'NO'):
+            ds = gdal.Open(str(path), gdal.GA_Update)
+            band = ds.GetRasterBand(1)
+            band.CreateMaskBand(gdal.GMF_PER_DATASET)
+            band.GetMaskBand().WriteArray(np.full((20, 20), 255, dtype='uint8'))
+            ds = None
+        self.assertTrue(Path(str(path) + '.msk').exists())
+        _error, record = self.expect_stop([path], output_nodata=-32768.0)
+        self.assertEqual(record['failure_detail'][0]['role'], 'input_declared')
+        self.assertEqual(record['failure_detail'][0]['count'], 4)
+
+    def test_explicit_mask_exact_declared_hole_does_not_fail(self):
+        path = self.tif([-9999.0, 42.0], nodata=-9999.0)
+        ds = gdal.Open(str(path), gdal.GA_Update)
+        band = ds.GetRasterBand(1)
+        band.CreateMaskBand(gdal.GMF_PER_DATASET)
+        band.GetMaskBand().WriteArray(np.full((20, 20), 255, dtype='uint8'))
+        ds = None
+        manifest, _array, _nodata, _out = self.run_dem([path], output_nodata=-32768.0)
+        self.assertEqual(manifest['status'], 'completed')
+
     def test_nan_cells_are_not_flagged(self):
         a = raster([np.nan, np.nan, 42.0])
         self._n += 1
@@ -196,6 +234,43 @@ class FalsePositiveGuardTests(InputMaskNoDataCase):
             [path], output_nodata=-32768.0, source_nodata=-999999.0)
         self.assertEqual(manifest['status'], 'completed')
         np.testing.assert_array_equal(array[5, 2:9], np.array(SEVEN, dtype='float32'))
+
+
+class SourceNoDataOverrideRegressionTests(InputMaskNoDataCase):
+    """Claude Windows findings F2-F5: explicit srcNodata may drop valid near values."""
+
+    def _override_case(self, band_nodata, mask_mode):
+        path = self.tif(SEVEN, nodata=band_nodata)
+        if mask_mode != 'none':
+            ds = gdal.Open(str(path), gdal.GA_Update)
+            with gdal.config_option('GDAL_TIFF_INTERNAL_MASK',
+                                    'YES' if mask_mode == 'internal' else 'NO'):
+                ds.GetRasterBand(1).CreateMaskBand(gdal.GMF_PER_DATASET)
+                ds.GetRasterBand(1).GetMaskBand().WriteArray(
+                    np.full((20, 20), 255, dtype='uint8'))
+            ds = None
+        _error, record = self.expect_stop(
+            [path], output_nodata=-32768.0, source_nodata=-9999.0)
+        self.assertEqual(record['status'], 'failed')
+        self.assertEqual(len(record['failure_detail']), 1)
+        entry = record['failure_detail'][0]
+        self.assertEqual(entry['role'], 'input_declared')
+        self.assertEqual(entry['declared_nodata'], -9999.0)
+        self.assertEqual(entry['count'], 4)
+        self.assertEqual([(p['row'], p['col']) for p in entry['positions']],
+                         [(5, 2), (5, 3), (5, 4), (5, 5)])
+
+    def test_F2_no_band_nodata_internal_mask(self):
+        self._override_case(None, 'internal')
+
+    def test_F3_no_band_nodata_no_mask(self):
+        self._override_case(None, 'none')
+
+    def test_F4_different_band_nodata_internal_mask(self):
+        self._override_case(-32768.0, 'internal')
+
+    def test_F5_different_band_nodata_external_mask(self):
+        self._override_case(-32768.0, 'external')
 
 
 class MixedRoleTests(InputMaskNoDataCase):
