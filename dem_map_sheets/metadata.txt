@@ -2,9 +2,9 @@
 name=DEM Map Sheets
 qgisMinimumVersion=3.44
 qgisMaximumVersion=3.99
-description=LEM/LAS/LAZ/COPC/標高テキスト/地理院DEM/GeoTIFFからDEMを作成・マージしTerrainRGB XYZを生成
-about=CS Map Sheetsから派生したDEM作成専用QGISプラグインです。LEM、LAS/LAZ/COPC、XYZ/CSV/TXT、国土地理院基盤地図情報DEM ZIP/XML、TIFF/GeoTIFFを共通セル・CRSのGeoTIFF DEMへ変換し、結合GeoTIFFとTerrainRGB XYZ PNGタイルを生成します。鉛直基準の変換は行いません。QGIS 3.44向けプラグインです。重複DEMは2500図郭ごとに計測年度・精度・グラウンド点密度・図郭充足率で自動選定できます。
-version=0.2.1
+description=多様な標高データからDEMを作成し、国土基本図2500図郭別・結合GeoTIFFとTerrainRGB XYZタイル（PNG）を出力します
+about=CS Map Sheetsから派生したDEM作成専用QGISプラグインです。多様な標高データ（LEM、LAS/LAZ/COPC、XYZ/CSV/TXT、国土地理院基盤地図情報DEM ZIP/XML、TIFF/GeoTIFF）を共通セル・CRSのGeoTIFF DEMへ変換し、国土基本図2500図郭別のDEM、結合GeoTIFF、TerrainRGB XYZ PNGタイルを出力します。出力NoData値の指定、NoData近傍の有効値が無通知で欠測化する衝突の検出と停止、run.jsonへの処理記録と来歴（SHA-256）の保存に対応します。重複DEMは2500図郭ごとに計測年度・精度・グラウンド点密度・図郭充足率で自動選定できます。鉛直基準の変換は行いません。QGIS 3.44向けプラグインです。
+version=0.3.0
 author=yo-1
 email=yo-1@geographic-information.net
 homepage=https://github.com/yo-1/dem-map-sheets
