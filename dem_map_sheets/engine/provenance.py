@@ -134,23 +134,23 @@ def collect_environment(gdal=None, osr=None, config=None, input_report=None):
     try:
         from ..version import VERSION
         env['plugin'] = VERSION
-    except Exception:
+    except Exception:  # nosec B110: 版取得は項目ごとのベストエフォート。失敗時はキー省略が仕様（collect_environment の docstring 参照）
         pass
     try:
         if gdal is not None:
             env['gdal'] = gdal.VersionInfo('RELEASE_NAME')
-    except Exception:
+    except Exception:  # nosec B110: 版取得は項目ごとのベストエフォート。失敗時はキー省略が仕様（collect_environment の docstring 参照）
         pass
     try:
         if osr is not None:
             env['proj'] = '%d.%d.%d' % (osr.GetPROJVersionMajor(),
                                          osr.GetPROJVersionMinor(), osr.GetPROJVersionMicro())
-    except Exception:
+    except Exception:  # nosec B110: 版取得は項目ごとのベストエフォート。失敗時はキー省略が仕様（collect_environment の docstring 参照）
         pass
     try:
         import numpy
         env['numpy'] = numpy.__version__
-    except Exception:
+    except Exception:  # nosec B110: 版取得は項目ごとのベストエフォート。失敗時はキー省略が仕様（collect_environment の docstring 参照）
         pass
     qgis = (config or {}).get('qgis_version')
     if qgis:
@@ -166,7 +166,7 @@ def collect_environment(gdal=None, osr=None, config=None, input_report=None):
             commit = json.loads(info.read_text(encoding='utf-8')).get('commit')
             if isinstance(commit, str) and len(commit) <= 64:
                 env['commit'] = commit
-    except Exception:
+    except Exception:  # nosec B110: 版取得は項目ごとのベストエフォート。失敗時はキー省略が仕様（collect_environment の docstring 参照）
         pass
     return env
 
