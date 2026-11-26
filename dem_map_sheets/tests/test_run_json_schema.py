@@ -3,7 +3,6 @@ import json
 import tempfile
 import unittest
 from pathlib import Path
-from unittest import mock
 
 from dem_map_sheets.engine import dem_pipeline
 from dem_map_sheets.engine.run_record import (

@@ -169,7 +169,7 @@ class DEMMapSheetsAlgorithm(QgsProcessingAlgorithm):
         if grid_ref in (1,2):
             c['forest_grid_coordinate_reference']=['center','upper_left'][grid_ref-1]
         try:c['qgis_version']=Qgis.version()
-        except Exception:pass
+        except Exception:pass  # nosec B110: 版取得はベストエフォート。失敗時はキー省略が仕様
         feedback.pushInfo(f'DEM Map Sheets v{VERSION}: 入力変換を開始します。')
         try:
             manifest=run(c,result_dir,gdal,osr,feedback)

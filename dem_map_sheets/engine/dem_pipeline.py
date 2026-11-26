@@ -183,7 +183,7 @@ def _record_failure(out,work,config,exc,feedback,inputs=None,gdal=None,osr=None)
         detail=getattr(exc,'detail',None)
         if detail is not None:record['failure_detail']=detail
         try:record['provenance']=build_failure_provenance(config,out,inputs,gdal,osr)
-        except Exception:pass  # 来歴の失敗で失敗記録そのものを損なわない
+        except Exception:pass  # nosec B110: 来歴の失敗で失敗記録そのものを損なわない（ベストエフォート）
         (Path(out)/'run.json').write_text(json.dumps(finalize_run_record(record),ensure_ascii=False,indent=2),encoding='utf-8')
     except Exception as record_exc:
         # Recording must never mask the original error; leave a

@@ -15,7 +15,6 @@ A fake pdal shell script answers --version, `info --summary` and the scan
 pipeline (`pipeline X --metadata M --stream`) with canned data.
 """
 import json
-import math
 import os
 import sys
 import tempfile
