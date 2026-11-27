@@ -6,6 +6,7 @@ on:
       - 'dem_map_sheets/tests/test_input_options.py'
       - 'dem_map_sheets/tests/test_temp_cleanup.py'
       - 'dem_map_sheets/engine/**'
+      - 'dem_map_sheets/tests/test_pdal_report_version.py'
       - '.github/workflows/windows-regressions.yml'
   workflow_dispatch:
 jobs:
@@ -34,6 +35,7 @@ jobs:
           from osgeo import gdal
           print('Python:', sys.version, 'GDAL:', gdal.VersionInfo('--version'), flush=True)
           tests = [
+              ('test_pdal_report_version', 'PdalReportVersionTests.test_windows_linux_las_laz_csv_reports_share_provenance_rule'),
             ('test_failure_cleanup', 'PruneRobustnessTests.test_prune_is_recursive'),
             ('test_input_options', 'DiscoverTests.test_glob_pattern'),
             ('test_temp_cleanup', 'RunProcessEnvironmentTests.test_python_env_vars_are_stripped_from_child'),
