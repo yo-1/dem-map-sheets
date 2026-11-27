@@ -10,9 +10,11 @@ import time
 try:
     from .input_sources import cancelled, say, crs_of, text_rows, NODATA, output_nodata_of, point_nodata_collision_error
     from ._constants import nodata_window as _f32_window
+    from .provenance import parse_pdal_version
 except ImportError:
     from input_sources import cancelled, say, crs_of, text_rows, NODATA, output_nodata_of, point_nodata_collision_error
     from _constants import nodata_window as _f32_window
+    from provenance import parse_pdal_version
 
 
 def executable(c):
@@ -446,7 +448,7 @@ def _points_to_rasters(c,work,gdal,osr,feedback,exe,staged,pdal_root):
         if stage_dir.is_dir():
             try:stage_dir.rmdir()
             except OSError:pass
-    return outputs,dict(sources=records,pdal_version=version.strip(),blocks=len(indices),empty_blocks=empty,
+    return outputs,dict(sources=records,pdal_version=parse_pdal_version(version),blocks=len(indices),empty_blocks=empty,
         classification_mode=c['lidar_mode'] if c['input_type']=='lidar' else 'text_ground_points',
         interpolation=c['point_method'],radius_m=c['point_radius'],fallback_fill=False,
         note='Auto-classified LAZ blocks contain overlapping buffers; inspect before use. Original point files are unchanged.')
