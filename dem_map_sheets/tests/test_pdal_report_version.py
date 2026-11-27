@@ -22,7 +22,8 @@ class PdalReportVersionTests(unittest.TestCase):
             for ext in ('las', 'laz', 'csv'):
                 for priority in ('last', 'auto'):
                     with self.subTest(raw=raw, ext=ext, priority=priority), tempfile.TemporaryDirectory() as td:
-                        root = Path(td); source = root / ('input.'+ext); source.write_bytes(b'fixture')
+                        root = Path(td)/'日本語'; root.mkdir()
+                        source = root / ('input.'+ext); source.write_bytes(b'fixture')
                         cfg = {**DEFAULTS, 'input_type':'text' if ext=='csv' else 'lidar',
                                'text_mode':'points', 'lidar_mode':'ground_only', 'inputs':[str(source)],
                                'input_crs':'EPSG:6677','target_crs':'EPSG:6677','cell_size':1.,
@@ -32,14 +33,17 @@ class PdalReportVersionTests(unittest.TestCase):
                             log = Path(log)
                             if args == ['--version']:
                                 log.write_text(raw); return
-                            dest = log.parent/'block_000000_buffer.tif'
+                            spec = json.loads(Path(args[1]).read_text())
+                            dest = Path(spec['pipeline'][0]['filename'])
                             ds = gdal.GetDriverByName('GTiff').Create(str(dest),64,64,1,gdal.GDT_Float32)
                             ds.SetGeoTransform((0.,1.,0.,64.,0.,-1.))
                             srs=osr.SpatialReference(); srs.ImportFromEPSG(6677)
                             ds.SetProjection(srs.ExportToWkt()); ds.GetRasterBand(1).Fill(100.)
                             ds.FlushCache(); ds=None
+                        def pipeline(selected, bounds, c, bufferfile, classified):
+                            return {'pipeline':[{'filename':str(bufferfile)}]}, 0
                         records=[dict(path=str(source),read_path=str(source),bounds=[0.,0.,.5,.5],count=1)]
-                        with patch.object(point_inputs,'executable',return_value='mocked'), patch.object(point_inputs,'run_process',side_effect=process), patch.object(point_inputs,'inspect_sources',return_value=(records,[])), patch.object(point_inputs,'build_pipeline',return_value=({'pipeline':[]},0)):
+                        with patch.object(point_inputs,'executable',return_value='mocked'), patch.object(point_inputs,'run_process',side_effect=process), patch.object(point_inputs,'inspect_sources',return_value=(records,[])), patch.object(point_inputs,'build_pipeline',side_effect=pipeline):
                             result=run(cfg,root/'out',gdal,osr,None)
                         saved=json.loads((root/'out'/'run.json').read_text())
                         report=saved['input_report']
